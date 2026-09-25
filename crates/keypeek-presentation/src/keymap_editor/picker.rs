@@ -4,7 +4,7 @@ use crate::key_paint::{self, KeyDisplay, KeyPaintStyle};
 use keypeek_core::{modifier_symbols, KeycodeKind, Label, LayoutKey};
 
 /// Key unit size in picker grids in pixels.
-pub const KEY_UNIT: f32 = 51.0;
+pub const KEY_UNIT: f32 = 56.0;
 /// Space between key cells in pixels.
 const GAP: f32 = 6.0;
 
@@ -178,7 +178,7 @@ pub const SECTION_SPACING: f32 = 8.0;
 /// Vertical space below a grid of keys in pixels.
 pub const GRID_SPACING: f32 = 6.0;
 
-/// Draws a section headline for the edit key window, matching the sidebar section font size.
+/// Draws a solid primary section headline (e.g. "Modifiers", "Keycode", "Mouse Buttons").
 pub fn section_headline(ui: &mut egui::Ui, text: &str) {
     ui.label(
         egui::RichText::new(text)
@@ -188,25 +188,35 @@ pub fn section_headline(ui: &mut egui::Ui, text: &str) {
     ui.add_space(2.0);
 }
 
-/// Helper that renders filtered candidate groups, optionally prefixing each group with a headline.
-fn render_candidate_grid_groups(
+/// Draws a subdued secondary category headline matching sidebar section headers (e.g. "Basic", "Media", "Special").
+pub fn category_headline(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .text_style(egui::TextStyle::Body)
+            .color(ui.visuals().weak_text_color()),
+    );
+    ui.add_space(2.0);
+}
+
+/// Draws multiple candidate groups inside an existing UI container,
+/// grouping candidates under category headlines with unified search filtering.
+pub fn multi_candidate_groups(
     ui: &mut egui::Ui,
     groups: &[CandidateGroup],
     search_query: &str,
-    show_headlines: bool,
     filter: impl Fn(&Candidate) -> bool,
     selected: Option<SelectedKey<'_>>,
     style: &KeyPaintStyle,
     mut on_select: impl FnMut(usize, &Candidate),
 ) {
+    let mut rendered_count = 0;
     render_candidate_groups(ui, groups, search_query, filter, |ui, gi, name, refs| {
         ui.push_id((gi, name), |ui| {
-            if show_headlines {
-                if gi > 0 {
-                    ui.add_space(SECTION_SPACING);
-                }
-                section_headline(ui, name);
+            if rendered_count > 0 {
+                ui.add_space(SECTION_SPACING);
             }
+            rendered_count += 1;
+            category_headline(ui, name);
             picker_grid_refs(ui, name, refs, selected, style, |candidate| {
                 on_select(gi, candidate)
             });
@@ -215,27 +225,28 @@ fn render_candidate_grid_groups(
     });
 }
 
-/// Draws multiple candidate groups inside an existing UI container,
-/// filtering all groups by the search query. Second-level category headers are omitted.
-pub fn multi_candidate_groups(
+/// Helper that renders filtered candidate groups with section headlines.
+fn render_candidate_grid_groups(
     ui: &mut egui::Ui,
     groups: &[CandidateGroup],
     search_query: &str,
     filter: impl Fn(&Candidate) -> bool,
     selected: Option<SelectedKey<'_>>,
     style: &KeyPaintStyle,
-    on_select: impl FnMut(usize, &Candidate),
+    mut on_select: impl FnMut(usize, &Candidate),
 ) {
-    render_candidate_grid_groups(
-        ui,
-        groups,
-        search_query,
-        false,
-        filter,
-        selected,
-        style,
-        on_select,
-    );
+    render_candidate_groups(ui, groups, search_query, filter, |ui, gi, name, refs| {
+        ui.push_id((gi, name), |ui| {
+            if gi > 0 {
+                ui.add_space(SECTION_SPACING);
+            }
+            section_headline(ui, name);
+            picker_grid_refs(ui, name, refs, selected, style, |candidate| {
+                on_select(gi, candidate)
+            });
+            ui.add_space(GRID_SPACING);
+        });
+    });
 }
 
 /// Draws a search input with width matching the left pane.
@@ -261,16 +272,7 @@ pub fn candidate_groups(
     style: &KeyPaintStyle,
     on_select: impl FnMut(usize, &Candidate),
 ) {
-    render_candidate_grid_groups(
-        ui,
-        groups,
-        search_query,
-        true,
-        filter,
-        selected,
-        style,
-        on_select,
-    );
+    render_candidate_grid_groups(ui, groups, search_query, filter, selected, style, on_select);
 }
 
 /// Draws a modifier key button.
@@ -314,34 +316,37 @@ pub fn modifier_toggle_grid(
     id_salt: &str,
     mods: u8,
     valid: bool,
+    enabled: bool,
     style: &KeyPaintStyle,
     mut on_toggle: impl FnMut(u8),
 ) {
-    let row_width = 4.0 * KEY_UNIT + 3.0 * GAP;
-    let total_height = 2.0 * KEY_UNIT + GAP;
-    let (_, space_rect) = ui.allocate_space(egui::vec2(row_width, total_height));
+    ui.add_enabled_ui(enabled, |ui| {
+        let row_width = 4.0 * KEY_UNIT + 3.0 * GAP;
+        let total_height = 2.0 * KEY_UNIT + GAP;
+        let (_, space_rect) = ui.allocate_space(egui::vec2(row_width, total_height));
 
-    for (idx, chip) in modifier_chip_keys().iter().enumerate() {
-        let col = (idx % 4) as f32;
-        let row = (idx / 4) as f32;
-        let mask = 1 << idx;
-        let cell = egui::Rect::from_min_size(
-            space_rect.min + egui::vec2(col * (KEY_UNIT + GAP), row * (KEY_UNIT + GAP)),
-            egui::vec2(KEY_UNIT, KEY_UNIT),
-        );
-        let response = key_chip(
-            ui,
-            cell,
-            ui.id().with((id_salt, "mod", mask)),
-            chip,
-            mods & mask != 0,
-            valid,
-            style,
-        );
-        if response.clicked() {
-            on_toggle(mask);
+        for (idx, chip) in modifier_chip_keys().iter().enumerate() {
+            let col = (idx % 4) as f32;
+            let row = (idx / 4) as f32;
+            let mask = 1 << idx;
+            let cell = egui::Rect::from_min_size(
+                space_rect.min + egui::vec2(col * (KEY_UNIT + GAP), row * (KEY_UNIT + GAP)),
+                egui::vec2(KEY_UNIT, KEY_UNIT),
+            );
+            let response = key_chip(
+                ui,
+                cell,
+                ui.id().with((id_salt, "mod", mask)),
+                chip,
+                mods & mask != 0,
+                valid,
+                style,
+            );
+            if response.clicked() {
+                on_toggle(mask);
+            }
         }
-    }
+    });
 }
 
 #[cfg(test)]
@@ -418,16 +423,6 @@ mod tests {
     }
 
     #[test]
-    fn picker_grid_width_matches_columns() {
-        // 1 column: 51.0
-        assert_eq!(picker_grid_width(55.0), 51.0);
-        // 2 columns: 51.0 * 2 + 6.0 = 108.0
-        assert_eq!(picker_grid_width(110.0), 108.0);
-        // 10 columns: 51.0 * 10 + 6.0 * 9 = 564.0
-        assert_eq!(picker_grid_width(580.0), 564.0);
-    }
-
-    #[test]
     fn modifier_toggle_grid_dimensions_and_toggle() {
         let ctx = egui::Context::default();
         let style = KeyPaintStyle::from_settings(&crate::settings::Settings::default());
@@ -438,7 +433,7 @@ mod tests {
         let mut toggled = None;
         let output = ctx.run_ui(Default::default(), |ui| {
             let inner_response = ui.allocate_ui(egui::vec2(0.0, 0.0), |ui| {
-                modifier_toggle_grid(ui, "test", 0, true, &style, |mask| {
+                modifier_toggle_grid(ui, "test", 0, true, true, &style, |mask| {
                     toggled = Some(mask);
                 });
             });

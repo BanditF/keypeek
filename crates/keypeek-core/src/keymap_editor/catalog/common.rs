@@ -84,14 +84,107 @@ pub fn attach_friendly_media_aliases(cand: Candidate, id: u16) -> Candidate {
     cand.with_search_tokens(aliases.iter().copied())
 }
 
-/// Builds candidates for keyboard usages (USB HID Page 0x07).
+/// Returns `true` if a USB HID Keyboard Page (0x07) usage ID belongs in the standard "Basic" group
+/// (standard typing keys, layout/whitespace keys, navigation cluster, arrows, standard numpad, F1-F12).
+pub fn is_basic_keyboard_usage(usage_id: u16) -> bool {
+    matches!(
+        usage_id,
+        0x04..=0x45       // A-Z (0x04..=0x1D), 1-0 (0x1E..=0x27), Enter/Esc/Bksp/Tab/Space/Punct (0x28..=0x38), CapsLock (0x39), F1-F12 (0x3A..=0x45)
+        | 0x46..=0x52     // PrintScreen, ScrollLock, Pause, Insert, Home, PageUp, Delete, End, PageDown, Right, Left, Down, Up
+        | 0x53..=0x65     // Keypad NumLock through Keypad Menu, plus NUBS (0x64)
+        | 0x67            // Keypad =
+        | 0xE0..=0xE7     // Modifiers (LCtrl, LShift, LAlt, LGUI, RCtrl, RShift, RAlt, RGUI)
+    )
+}
+
+/// Returns `true` if a USB HID Keyboard Page (0x07) usage ID is an extended function key (F13-F24).
+pub fn is_extended_fn_usage(usage_id: u16) -> bool {
+    matches!(usage_id, 0x68..=0x73)
+}
+
+/// Returns `true` if a USB HID Keyboard Page (0x07) usage ID is an international or language switching key
+/// (e.g. Int1-Int9, Lang1-Lang9).
+pub fn is_international_usage(usage_id: u16) -> bool {
+    matches!(usage_id, 0x87..=0x98)
+}
+
+/// Attaches search aliases for international and language switching keys.
+pub fn attach_friendly_international_aliases(cand: Candidate, id: u16) -> Candidate {
+    let aliases: &[&str] = match id {
+        0x87 => &["int1", "ro", "backslash ro"],
+        0x88 => &["int2", "katakanahiragana", "kana"],
+        0x89 => &["int3", "yen"],
+        0x8A => &["int4", "henkan"],
+        0x8B => &["int5", "muhenkan"],
+        0x8C => &["int6", "numpadcomma"],
+        0x8D => &["int7"],
+        0x8E => &["int8"],
+        0x8F => &["int9"],
+        0x90 => &["lang1", "hangul", "hanja"],
+        0x91 => &["lang2", "hanja", "eisu"],
+        0x92 => &["lang3", "katakana"],
+        0x93 => &["lang4", "hiragana"],
+        0x94 => &["lang5", "zenkakuhankaku"],
+        0x95 => &["lang6"],
+        0x96 => &["lang7"],
+        0x97 => &["lang8"],
+        0x98 => &["lang9"],
+        _ => &[],
+    };
+    cand.with_search_tokens(aliases.iter().copied())
+}
+
+/// Builds candidates for the "Basic" keyboard group (USB HID Page 0x07), strictly limited to standard keys.
+/// Includes Transparent and None at the beginning of the Basic key group.
 pub fn build_keyboard_candidates(
+    presenter: &dyn KeyPresenter,
+    usages: impl IntoIterator<Item = u16>,
+    token_fn: impl Fn(u16) -> Vec<String>,
+) -> Vec<Candidate> {
+    let mut candidates = Vec::new();
+
+    // Prepend Transparent and None to Basic
+    candidates.push(action_candidate(
+        KeySpec::Transparent,
+        &["transparent", "trans", "pass"],
+        presenter,
+    ));
+    candidates.push(action_candidate(
+        KeySpec::None,
+        &["none", "noop", "unbound"],
+        presenter,
+    ));
+
+    candidates.extend(
+        usages
+            .into_iter()
+            .filter(|&id| is_basic_keyboard_usage(id))
+            .map(|id| {
+                let action = KeySpec::KeyPress {
+                    key: HidKey::keyboard(id),
+                    modifiers: Modifiers::default(),
+                };
+                let mut cand = Candidate::from_action(action, presenter, &[]);
+                if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
+                    cand.key.symbol = Some(format!("0x{:02X}", id));
+                }
+                cand = cand.with_search_tokens(token_fn(id));
+                attach_friendly_keyboard_aliases(cand, id)
+            }),
+    );
+
+    candidates
+}
+
+/// Builds candidates for the "International" language/switching group.
+pub fn build_international_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
     token_fn: impl Fn(u16) -> Vec<String>,
 ) -> Vec<Candidate> {
     usages
         .into_iter()
+        .filter(|&id| is_international_usage(id))
         .map(|id| {
             let action = KeySpec::KeyPress {
                 key: HidKey::keyboard(id),
@@ -102,12 +195,35 @@ pub fn build_keyboard_candidates(
                 cand.key.symbol = Some(format!("0x{:02X}", id));
             }
             cand = cand.with_search_tokens(token_fn(id));
-            attach_friendly_keyboard_aliases(cand, id)
+            attach_friendly_international_aliases(cand, id)
         })
         .collect()
 }
 
-/// Builds candidates for consumer/media usages (USB HID Page 0x0C).
+/// Returns `true` if a USB HID Consumer Page (0x0C) usage is an audio or video/playback control
+/// (e.g. Mute, Volume Up/Down, Play/Pause, Next/Previous, Stop, Fast Forward, Rewind, Eject).
+pub fn is_audio_video_consumer_usage(usage_id: u16) -> bool {
+    matches!(
+        usage_id,
+        0xE2            // Mute
+        | 0xE9          // Volume Up
+        | 0xEA          // Volume Down
+        | 0xCD          // Play / Pause
+        | 0xB5          // Next Track
+        | 0xB6          // Previous Track
+        | 0xB7          // Stop
+        | 0xB3          // Fast Forward
+        | 0xB4          // Rewind
+        | 0xB8          // Eject
+    )
+}
+
+/// Returns `true` if a USB HID Consumer Page (0x0C) usage is an application launcher, browser control, or display brightness key.
+pub fn is_app_and_web_consumer_usage(usage_id: u16) -> bool {
+    !is_audio_video_consumer_usage(usage_id)
+}
+
+/// Builds candidates for consumer/media usages (USB HID Page 0x0C), filtered to audio & video/playback controls.
 pub fn build_media_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
@@ -115,6 +231,31 @@ pub fn build_media_candidates(
 ) -> Vec<Candidate> {
     usages
         .into_iter()
+        .filter(|&id| is_audio_video_consumer_usage(id))
+        .map(|id| {
+            let action = KeySpec::KeyPress {
+                key: HidKey::consumer(id),
+                modifiers: Modifiers::default(),
+            };
+            let mut cand = Candidate::from_action(action, presenter, &[]);
+            if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
+                cand.key.symbol = Some(format!("0x{:04X}", id));
+            }
+            cand = cand.with_search_tokens(token_fn(id));
+            attach_friendly_media_aliases(cand, id)
+        })
+        .collect()
+}
+
+/// Builds candidates for application launchers, browser controls, and display controls.
+pub fn build_app_and_web_candidates(
+    presenter: &dyn KeyPresenter,
+    usages: impl IntoIterator<Item = u16>,
+    token_fn: impl Fn(u16) -> Vec<String>,
+) -> Vec<Candidate> {
+    usages
+        .into_iter()
+        .filter(|&id| is_app_and_web_consumer_usage(id))
         .map(|id| {
             let action = KeySpec::KeyPress {
                 key: HidKey::consumer(id),
@@ -243,6 +384,21 @@ pub fn build_system_group(
 
     CandidateGroup {
         name: "System",
+        candidates,
+    }
+}
+
+/// Builds the consolidated System & Power candidate group with firmware-specific tokens.
+pub fn build_system_and_power_group(
+    presenter: &dyn KeyPresenter,
+    boot_power_actions: &[(PowerAction, &[&str])],
+    system_tokens_fn: impl Fn(u16) -> &'static [&'static str],
+    power_tokens_fn: impl Fn(PowerAction) -> &'static [&'static str],
+) -> CandidateGroup {
+    let mut candidates = build_system_group(presenter, system_tokens_fn).candidates;
+    candidates.extend(build_boot_power_group(presenter, boot_power_actions, power_tokens_fn).candidates);
+    CandidateGroup {
+        name: "System & Power",
         candidates,
     }
 }
@@ -568,19 +724,135 @@ pub fn build_special_group(
     presenter: &dyn KeyPresenter,
     extra_tokens_fn: impl Fn(&KeySpec) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let actions: [(KeySpec, &[&str]); 5] = [
-        (KeySpec::Transparent, &["transparent", "trans", "pass"]),
-        (KeySpec::None, &["none", "noop", "unbound"]),
+    let mut actions: Vec<(KeySpec, &[&str])> = vec![
         (KeySpec::CapsWord, &["caps word", "caps_word", "cw"]),
         (KeySpec::KeyRepeat, &["key repeat", "key_repeat", "repeat"]),
         (KeySpec::GraveEscape, &["grave escape", "grave_esc"]),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x82),
+                modifiers: Modifiers::default(),
+            },
+            &["locking caps lock", "locking caps", "lcap"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x83),
+                modifiers: Modifiers::default(),
+            },
+            &["locking num lock", "locking num", "lnum"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x84),
+                modifiers: Modifiers::default(),
+            },
+            &["locking scroll lock", "locking scroll", "lscrl"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x7A),
+                modifiers: Modifiers::default(),
+            },
+            &["undo"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x7B),
+                modifiers: Modifiers::default(),
+            },
+            &["cut"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x7C),
+                modifiers: Modifiers::default(),
+            },
+            &["copy"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x7D),
+                modifiers: Modifiers::default(),
+            },
+            &["paste"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x7E),
+                modifiers: Modifiers::default(),
+            },
+            &["find"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x79),
+                modifiers: Modifiers::default(),
+            },
+            &["again", "redo"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x78),
+                modifiers: Modifiers::default(),
+            },
+            &["stop"],
+        ),
+        (
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x66),
+                modifiers: Modifiers::default(),
+            },
+            &["power", "mac power", "keyboard power"],
+        ),
     ];
 
+    // Extended Function Keys F13..=F24
+    let f_aliases: [&[&str]; 12] = [
+        &["f13"], &["f14"], &["f15"], &["f16"], &["f17"], &["f18"],
+        &["f19"], &["f20"], &["f21"], &["f22"], &["f23"], &["f24"],
+    ];
+    for (i, usage) in (0x68..=0x73u16).enumerate() {
+        actions.push((
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(usage),
+                modifiers: Modifiers::default(),
+            },
+            f_aliases[i],
+        ));
+    }
+
+    // Specialized / Legacy Terminal Controls (0x99..=0xA4)
+    let legacy_specials: &[(u16, &[&str])] = &[
+        (0x99, &["alt erase"]),
+        (0x9A, &["sysreq", "attention"]),
+        (0x9B, &["cancel"]),
+        (0x9C, &["clear"]),
+        (0x9D, &["prior"]),
+        (0x9E, &["return"]),
+        (0x9F, &["separator"]),
+        (0xA0, &["out"]),
+        (0xA1, &["oper"]),
+        (0xA2, &["clear again"]),
+        (0xA3, &["crsel", "props"]),
+        (0xA4, &["exsel"]),
+    ];
+    for &(usage, aliases) in legacy_specials {
+        actions.push((
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(usage),
+                modifiers: Modifiers::default(),
+            },
+            aliases,
+        ));
+    }
+
     let candidates = actions
-        .into_iter()
+        .iter()
         .map(|(spec, names)| {
-            let extra = extra_tokens_fn(&spec);
-            action_candidate(spec, names, presenter).with_search_tokens(extra.iter().copied())
+            let extra = extra_tokens_fn(spec);
+            action_candidate(spec.clone(), names, presenter)
+                .with_search_tokens(extra.iter().copied())
         })
         .collect();
 
@@ -705,17 +977,19 @@ mod tests {
         let cands = build_keyboard_candidates(&TestPresenter, vec![0x04, 0x28], |_| {
             vec!["token".to_string()]
         });
-        assert_eq!(cands.len(), 2);
+        assert_eq!(cands.len(), 4);
+        assert_eq!(cands[0].binding, KeySpec::Transparent);
+        assert_eq!(cands[1].binding, KeySpec::None);
         assert_eq!(
-            cands[0].binding,
+            cands[2].binding,
             KeySpec::KeyPress {
                 key: HidKey::keyboard(0x04),
                 modifiers: Modifiers::default(),
             }
         );
-        assert!(cands[0].matches_query("token"));
+        assert!(cands[2].matches_query("token"));
         // Enter should get friendly alias
-        assert!(cands[1].matches_query("enter"));
+        assert!(cands[3].matches_query("enter"));
     }
 
     #[test]
@@ -727,5 +1001,20 @@ mod tests {
             .iter()
             .any(|c| matches!(c.binding, KeySpec::Bluetooth(BluetoothAction::Clear))));
         assert!(group.candidates[0].matches_query("test_extra"));
+    }
+
+    #[test]
+    fn common_international_candidates_produce_expected_specs() {
+        let cands = build_international_candidates(&TestPresenter, vec![0x90, 0x88], |_| vec![]);
+        assert_eq!(cands.len(), 2);
+        assert_eq!(
+            cands[0].binding,
+            KeySpec::KeyPress {
+                key: HidKey::keyboard(0x90),
+                modifiers: Modifiers::default(),
+            }
+        );
+        assert!(cands[0].matches_query("hangul"));
+        assert!(cands[1].matches_query("kana"));
     }
 }

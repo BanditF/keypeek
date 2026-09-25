@@ -10,7 +10,7 @@ use keypeek_core::{
     MouseAction, MouseButton, OutputTarget, PowerAction, RgbAction,
 };
 
-const ZMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 7] = [
+const ZMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 5] = [
     SidebarSection {
         title: "Keys",
         items: &[EditorSection::Keyboard, EditorSection::KeyToggle],
@@ -29,20 +29,12 @@ const ZMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 7] = [
         items: &[EditorSection::Bluetooth, EditorSection::Output],
     },
     SidebarSection {
-        title: "Power",
-        items: &[EditorSection::BootPower, EditorSection::System],
-    },
-    SidebarSection {
         title: "Lighting",
         items: &[EditorSection::Backlight, EditorSection::Rgb],
     },
     SidebarSection {
-        title: "Mouse",
-        items: &[EditorSection::Mouse],
-    },
-    SidebarSection {
         title: "Other",
-        items: &[EditorSection::Special, EditorSection::Custom],
+        items: &[EditorSection::Mouse, EditorSection::Custom],
     },
 ];
 
@@ -57,7 +49,7 @@ fn zmk_keyboard_group() -> &'static CandidateGroup {
             super::codec::zmk_search_tokens_for_hid(0x07, id)
         });
         CandidateGroup {
-            name: "Keyboard",
+            name: "Basic",
             candidates,
         }
     })
@@ -77,9 +69,83 @@ fn zmk_media_group() -> &'static CandidateGroup {
     })
 }
 
+fn zmk_apps_and_web_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        let usages = super::codec::zmk_all_consumer_usages();
+        let candidates = common::build_app_and_web_candidates(&ZmkKeyPresenter, usages, |id| {
+            super::codec::zmk_search_tokens_for_hid(0x0C, id)
+        });
+        CandidateGroup {
+            name: "Apps & Web",
+            candidates,
+        }
+    })
+}
+
+fn zmk_international_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        let usages = super::codec::zmk_all_keyboard_usages();
+        let candidates = common::build_international_candidates(&ZmkKeyPresenter, usages, |id| {
+            super::codec::zmk_search_tokens_for_hid(0x07, id)
+        });
+        CandidateGroup {
+            name: "International",
+            candidates,
+        }
+    })
+}
+
+const ZMK_BOOT_POWER_ACTIONS: [(PowerAction, &[&str]); 7] = [
+    (PowerAction::Reset, &["reset", "reboot", "sys_reset"]),
+    (
+        PowerAction::Bootloader,
+        &["bootloader", "dfu", "flash", "boot"],
+    ),
+    (PowerAction::SoftOff, &["soft off", "power off", "shutdown"]),
+    (
+        PowerAction::UnlockKeymap,
+        &["unlock", "keymap unlock", "studio unlock"],
+    ),
+    (PowerAction::Toggle, &["ext pwr tog", "power toggle"]),
+    (PowerAction::On, &["ext pwr on", "power on"]),
+    (PowerAction::Off, &["ext pwr off", "power off"]),
+];
+
+fn zmk_system_and_power_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        common::build_system_and_power_group(
+            &ZmkKeyPresenter,
+            &ZMK_BOOT_POWER_ACTIONS,
+            |_| &[],
+            |act| match act {
+                PowerAction::Reset => &["&sys_reset"],
+                PowerAction::Bootloader => &["&bootloader"],
+                PowerAction::SoftOff => &["&soft_off"],
+                PowerAction::UnlockKeymap => &["&studio_unlock"],
+                PowerAction::Toggle => &["&ext_power EP_TOG"],
+                PowerAction::On => &["&ext_power EP_ON"],
+                PowerAction::Off => &["&ext_power EP_OFF"],
+                _ => &[],
+            },
+        )
+    })
+}
+
 fn zmk_tap_categories() -> &'static [CandidateGroup] {
     static CATEGORIES: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    CATEGORIES.get_or_init(|| vec![zmk_keyboard_group().clone(), zmk_media_group().clone()])
+    CATEGORIES.get_or_init(|| {
+        vec![
+            zmk_keyboard_group().clone(),
+            zmk_media_group().clone(),
+            zmk_apps_and_web_group().clone(),
+            zmk_special_groups()[0].clone(),
+            zmk_system_and_power_group().clone(),
+            zmk_international_group().clone(),
+        ]
+    })
 }
 
 fn zmk_bluetooth_groups() -> &'static [CandidateGroup] {
@@ -113,49 +179,6 @@ fn zmk_output_groups() -> &'static [CandidateGroup] {
                     OutputTarget::Usb => &["&out OUT_USB", "out_usb"],
                     OutputTarget::Ble => &["&out OUT_BLE", "out_ble"],
                     OutputTarget::None => &["&out OUT_NONE", "out_none"],
-                    _ => &[],
-                }
-            },
-        )]
-    })
-}
-
-fn zmk_system_groups() -> &'static [CandidateGroup] {
-    static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    GROUPS.get_or_init(|| vec![common::build_system_group(&ZmkKeyPresenter, |_| &[])])
-}
-
-const ZMK_BOOT_POWER_ACTIONS: [(PowerAction, &[&str]); 7] = [
-    (PowerAction::Reset, &["reset", "reboot", "sys_reset"]),
-    (
-        PowerAction::Bootloader,
-        &["bootloader", "dfu", "flash", "boot"],
-    ),
-    (PowerAction::SoftOff, &["soft off", "power off", "shutdown"]),
-    (
-        PowerAction::UnlockKeymap,
-        &["unlock", "keymap unlock", "studio unlock"],
-    ),
-    (PowerAction::Toggle, &["ext pwr tog", "power toggle"]),
-    (PowerAction::On, &["ext pwr on", "power on"]),
-    (PowerAction::Off, &["ext pwr off", "power off"]),
-];
-
-fn zmk_boot_power_groups() -> &'static [CandidateGroup] {
-    static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    GROUPS.get_or_init(|| {
-        vec![common::build_boot_power_group(
-            &ZmkKeyPresenter,
-            &ZMK_BOOT_POWER_ACTIONS,
-            |act| -> &'static [&'static str] {
-                match act {
-                    PowerAction::Reset => &["&sys_reset"],
-                    PowerAction::Bootloader => &["&bootloader"],
-                    PowerAction::SoftOff => &["&soft_off"],
-                    PowerAction::UnlockKeymap => &["&studio_unlock"],
-                    PowerAction::Toggle => &["&ext_power EP_TOG"],
-                    PowerAction::On => &["&ext_power EP_ON"],
-                    PowerAction::Off => &["&ext_power EP_OFF"],
                     _ => &[],
                 }
             },
@@ -244,6 +267,32 @@ fn zmk_special_groups() -> &'static [CandidateGroup] {
                     KeySpec::CapsWord => &["&caps_word"],
                     KeySpec::KeyRepeat => &["&key_repeat"],
                     KeySpec::GraveEscape => &["&gresc", "gresc"],
+                    KeySpec::KeyPress { key, .. } => match key.id {
+                        0x82 => &["&kp LCAPS", "LCAPS"],
+                        0x83 => &["&kp LNUM", "LNUM"],
+                        0x84 => &["&kp LSCRL", "LSCRL"],
+                        0x7A => &["&kp K_UNDO"],
+                        0x7B => &["&kp K_CUT"],
+                        0x7C => &["&kp K_COPY"],
+                        0x7D => &["&kp K_PASTE"],
+                        0x7E => &["&kp K_FIND"],
+                        0x79 => &["&kp K_AGAIN"],
+                        0x78 => &["&kp K_STOP"],
+                        0x66 => &["&kp K_POWER"],
+                        0x68 => &["&kp F13"],
+                        0x69 => &["&kp F14"],
+                        0x6A => &["&kp F15"],
+                        0x6B => &["&kp F16"],
+                        0x6C => &["&kp F17"],
+                        0x6D => &["&kp F18"],
+                        0x6E => &["&kp F19"],
+                        0x6F => &["&kp F20"],
+                        0x70 => &["&kp F21"],
+                        0x71 => &["&kp F22"],
+                        0x72 => &["&kp F23"],
+                        0x73 => &["&kp F24"],
+                        _ => &[],
+                    },
                     _ => &[],
                 }
             },
@@ -303,18 +352,11 @@ impl EditorProfile for ZmkEditorProfile {
             | EditorSection::OneShot => zmk_tap_categories(),
             EditorSection::Bluetooth => zmk_bluetooth_groups(),
             EditorSection::Output => zmk_output_groups(),
-            EditorSection::System => zmk_system_groups(),
-            EditorSection::BootPower => zmk_boot_power_groups(),
             EditorSection::Backlight => zmk_backlight_groups(),
             EditorSection::Rgb => zmk_rgb_groups(),
             EditorSection::Mouse => zmk_mouse_groups(),
-            EditorSection::Special => zmk_special_groups(),
             EditorSection::Custom => zmk_custom_groups(),
-            EditorSection::LayerMod
-            | EditorSection::RgbMatrix
-            | EditorSection::Audio
-            | EditorSection::Layers
-            | EditorSection::RawHex => &[],
+            _ => &[],
         }
     }
 

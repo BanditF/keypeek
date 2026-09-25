@@ -10,7 +10,7 @@ use keypeek_core::{
     MouseButton, PowerAction, RgbAction, RgbMatrixAction,
 };
 
-const QMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 6] = [
+const QMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 4] = [
     SidebarSection {
         title: "Keys",
         items: &[EditorSection::Keyboard],
@@ -26,10 +26,6 @@ const QMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 6] = [
         ],
     },
     SidebarSection {
-        title: "Power",
-        items: &[EditorSection::BootPower, EditorSection::System],
-    },
-    SidebarSection {
         title: "Lighting & Audio",
         items: &[
             EditorSection::Backlight,
@@ -39,13 +35,9 @@ const QMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 6] = [
         ],
     },
     SidebarSection {
-        title: "Mouse",
-        items: &[EditorSection::Mouse],
-    },
-    SidebarSection {
         title: "Other",
         items: &[
-            EditorSection::Special,
+            EditorSection::Mouse,
             EditorSection::Custom,
             EditorSection::RawHex,
         ],
@@ -63,7 +55,7 @@ fn qmk_keyboard_group() -> &'static CandidateGroup {
             super::codec::qmk_search_tokens_for_hid(0x07, id)
         });
         CandidateGroup {
-            name: "Keyboard",
+            name: "Basic",
             candidates,
         }
     })
@@ -83,23 +75,31 @@ fn qmk_media_group() -> &'static CandidateGroup {
     })
 }
 
-fn qmk_tap_categories() -> &'static [CandidateGroup] {
-    static CATEGORIES: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    CATEGORIES.get_or_init(|| vec![qmk_keyboard_group().clone(), qmk_media_group().clone()])
+fn qmk_apps_and_web_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        let usages = super::codec::qmk_all_media_usages();
+        let candidates = common::build_app_and_web_candidates(&QmkKeyPresenter, usages, |id| {
+            super::codec::qmk_search_tokens_for_hid(0x0C, id)
+        });
+        CandidateGroup {
+            name: "Apps & Web",
+            candidates,
+        }
+    })
 }
 
-fn qmk_system_groups() -> &'static [CandidateGroup] {
-    static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    GROUPS.get_or_init(|| {
-        vec![common::build_system_group(
-            &QmkKeyPresenter,
-            |id| match id {
-                0x81 => &["KC_SYSTEM_POWER"][..],
-                0x82 => &["KC_SYSTEM_SLEEP"][..],
-                0x83 => &["KC_SYSTEM_WAKE"][..],
-                _ => &[][..],
-            },
-        )]
+fn qmk_international_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        let usages = super::codec::qmk_all_basic_usages();
+        let candidates = common::build_international_candidates(&QmkKeyPresenter, usages, |id| {
+            super::codec::qmk_search_tokens_for_hid(0x07, id)
+        });
+        CandidateGroup {
+            name: "International",
+            candidates,
+        }
     })
 }
 
@@ -112,21 +112,39 @@ const QMK_BOOT_POWER_ACTIONS: [(PowerAction, &[&str]); 3] = [
     (PowerAction::Other(0xEE), &["clear eeprom", "eeprom reset"]),
 ];
 
-fn qmk_boot_power_groups() -> &'static [CandidateGroup] {
-    static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    GROUPS.get_or_init(|| {
-        vec![common::build_boot_power_group(
+fn qmk_system_and_power_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        common::build_system_and_power_group(
             &QmkKeyPresenter,
             &QMK_BOOT_POWER_ACTIONS,
-            |act| -> &'static [&'static str] {
-                match act {
-                    PowerAction::Reset => &["QK_BOOT", "QK_REBOOT"],
-                    PowerAction::Bootloader => &["QK_BOOTLOADER"],
-                    PowerAction::Other(0xEE) => &["QK_CLEAR_EEPROM"],
-                    _ => &[],
-                }
+            |id| match id {
+                0x81 => &["KC_SYSTEM_POWER"][..],
+                0x82 => &["KC_SYSTEM_SLEEP"][..],
+                0x83 => &["KC_SYSTEM_WAKE"][..],
+                _ => &[][..],
             },
-        )]
+            |act| match act {
+                PowerAction::Reset => &["QK_BOOT", "QK_REBOOT"],
+                PowerAction::Bootloader => &["QK_BOOTLOADER"],
+                PowerAction::Other(0xEE) => &["QK_CLEAR_EEPROM"],
+                _ => &[],
+            },
+        )
+    })
+}
+
+fn qmk_tap_categories() -> &'static [CandidateGroup] {
+    static CATEGORIES: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
+    CATEGORIES.get_or_init(|| {
+        vec![
+            qmk_keyboard_group().clone(),
+            qmk_media_group().clone(),
+            qmk_apps_and_web_group().clone(),
+            qmk_special_groups()[0].clone(),
+            qmk_system_and_power_group().clone(),
+            qmk_international_group().clone(),
+        ]
     })
 }
 
@@ -276,6 +294,32 @@ fn qmk_special_groups() -> &'static [CandidateGroup] {
                     KeySpec::CapsWord => &["QK_CAPS_WORD_TOGGLE"],
                     KeySpec::KeyRepeat => &["QK_KEY_REPEAT"],
                     KeySpec::GraveEscape => &["QK_GRAVE_ESCAPE"],
+                    KeySpec::KeyPress { key, .. } => match key.id {
+                        0x82 => &["KC_LOCKING_CAPS_LOCK", "KC_LCAP"],
+                        0x83 => &["KC_LOCKING_NUM_LOCK", "KC_LNUM"],
+                        0x84 => &["KC_LOCKING_SCROLL_LOCK", "KC_LSCR"],
+                        0x7A => &["KC_UNDO"],
+                        0x7B => &["KC_CUT"],
+                        0x7C => &["KC_COPY"],
+                        0x7D => &["KC_PASTE"],
+                        0x7E => &["KC_FIND"],
+                        0x79 => &["KC_AGAIN"],
+                        0x78 => &["KC_STOP"],
+                        0x66 => &["KC_POWER", "KC_PWR"],
+                        0x68 => &["KC_F13"],
+                        0x69 => &["KC_F14"],
+                        0x6A => &["KC_F15"],
+                        0x6B => &["KC_F16"],
+                        0x6C => &["KC_F17"],
+                        0x6D => &["KC_F18"],
+                        0x6E => &["KC_F19"],
+                        0x6F => &["KC_F20"],
+                        0x70 => &["KC_F21"],
+                        0x71 => &["KC_F22"],
+                        0x72 => &["KC_F23"],
+                        0x73 => &["KC_F24"],
+                        _ => &[],
+                    },
                     _ => &[],
                 }
             },
@@ -349,21 +393,13 @@ impl EditorProfile for QmkEditorProfile {
             | EditorSection::Combo
             | EditorSection::ModTap
             | EditorSection::OneShot => qmk_tap_categories(),
-            EditorSection::System => qmk_system_groups(),
-            EditorSection::BootPower => qmk_boot_power_groups(),
             EditorSection::Backlight => qmk_backlight_groups(),
             EditorSection::Rgb => qmk_rgb_groups(),
             EditorSection::RgbMatrix => qmk_rgb_matrix_groups(),
             EditorSection::Audio => qmk_audio_groups(),
             EditorSection::Mouse => qmk_mouse_groups(),
-            EditorSection::Special => qmk_special_groups(),
             EditorSection::Custom => qmk_custom_groups(),
-            EditorSection::KeyToggle
-            | EditorSection::Bluetooth
-            | EditorSection::Output
-            | EditorSection::Layers
-            | EditorSection::LayerMod
-            | EditorSection::RawHex => &[],
+            _ => &[],
         }
     }
 

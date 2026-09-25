@@ -215,10 +215,11 @@ impl EditorState {
         id_salt: &str,
         mods: u8,
         valid: bool,
+        enabled: bool,
         ctx: &PageContext<'_>,
         mut apply: impl FnMut(&mut KeyDraft, u8),
     ) {
-        modifier_toggle_grid(ui, id_salt, mods, valid, ctx.style, |mask| {
+        modifier_toggle_grid(ui, id_salt, mods, valid, enabled, ctx.style, |mask| {
             apply(&mut self.draft, mask);
             self.commit_draft(ctx.keyboard, ctx.profile, ctx.target);
         });
@@ -237,13 +238,25 @@ impl EditorState {
             selected,
             ctx.style,
             |_, candidate| {
-                if let KeySpec::KeyPress { key, .. } = &candidate.binding {
-                    if toggle && self.draft.tap_key == Some(*key) {
-                        self.draft.tap_key = None;
-                    } else {
-                        self.draft.tap_key = Some(*key);
+                match &candidate.binding {
+                    KeySpec::KeyPress { key, .. } => {
+                        if key.page != 0x07 {
+                            // Non-keyboard HID pages (e.g. Consumer, System) don't support keyboard modifiers
+                            self.draft.modifiers = 0;
+                        }
+                        if toggle && self.draft.tap_key == Some(*key) {
+                            self.draft.tap_key = None;
+                        } else {
+                            self.draft.tap_key = Some(*key);
+                        }
+                        self.commit_draft(ctx.keyboard, ctx.profile, ctx.target);
                     }
-                    self.commit_draft(ctx.keyboard, ctx.profile, ctx.target);
+                    other => {
+                        // Special standalone actions (Transparent, None, Bootloader, etc.)
+                        self.draft.modifiers = 0;
+                        self.draft.tap_key = None;
+                        self.commit_action(ctx.keyboard, ctx.target, other.clone());
+                    }
                 }
             },
         );
@@ -253,15 +266,31 @@ impl EditorState {
         &mut self,
         ui: &mut egui::Ui,
         ctx: &PageContext<'_>,
-        section: EditorSection,
+        _section: EditorSection,
         id_salt: &str,
     ) {
         let is_valid = self.draft.is_valid();
-        section_headline(ui, ctx.profile.section_label(section));
-        self.draw_mod_grid(ui, id_salt, self.draft.modifiers, is_valid, ctx, |d, m| {
-            d.modifiers ^= m;
-        });
-        ui.add_space(GRID_SPACING);
+        let mods_supported = self
+            .draft
+            .tap_key
+            .map(|k| k.page == 0x07)
+            .unwrap_or(true);
+
+        section_headline(ui, "Modifiers");
+        self.draw_mod_grid(
+            ui,
+            id_salt,
+            self.draft.modifiers,
+            is_valid,
+            mods_supported,
+            ctx,
+            |d, m| {
+                d.modifiers ^= m;
+            },
+        );
+        ui.add_space(SECTION_SPACING);
+
+        section_headline(ui, "Keycode");
         self.draw_tap_candidates(ui, ctx, false);
     }
 
@@ -295,6 +324,7 @@ impl EditorState {
                 "tap_mods",
                 self.draft.tap_modifiers,
                 is_valid,
+                true,
                 ctx,
                 |d, m| d.tap_modifiers ^= m,
             );
@@ -311,6 +341,7 @@ impl EditorState {
             "hold_mods",
             self.draft.hold_mods,
             is_valid,
+            true,
             ctx,
             |d, m| d.hold_mods ^= m,
         );
@@ -371,6 +402,7 @@ impl EditorState {
             "oneshot_mods",
             self.draft.modifiers,
             is_valid,
+            true,
             ctx,
             |d, m| d.modifiers ^= m,
         );
@@ -456,6 +488,7 @@ impl EditorState {
             "layermod_mods",
             self.draft.modifiers,
             is_valid,
+            true,
             ctx,
             |d, m| d.modifiers ^= m,
         );

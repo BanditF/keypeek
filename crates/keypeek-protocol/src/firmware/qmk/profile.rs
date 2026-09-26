@@ -4,16 +4,17 @@ use crate::firmware::qmk::QmkKeyPresenter;
 use keypeek_core::keymap_editor::catalog::common;
 use keypeek_core::keymap_editor::draft::EditorSection;
 use keypeek_core::keymap_editor::profile::{EditorProfile, SidebarSection};
-use keypeek_core::keymap_editor::{CandidateGroup, LayerTapTarget};
+use keypeek_core::keymap_editor::{Candidate, CandidateGroup, LayerTapTarget};
 use keypeek_core::{
-    AudioAction, BacklightAction, KeyPresenter, KeySpec, LayerActivation, LayoutKey, MouseAction,
-    MouseButton, PowerAction, RgbAction, RgbMatrixAction,
+    AudioAction, BacklightAction, CustomBinding, CustomKind, KeyPresenter, KeySpec,
+    LayerActivation, LayoutKey, MouseAction, MouseButton, PowerAction, RgbAction, RgbMatrixAction,
 };
+use qmk_via_api::keycodes::Keycode;
 
 const QMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 4] = [
     SidebarSection {
         title: "Keys",
-        items: &[EditorSection::Keyboard],
+        items: &[EditorSection::Keyboard, EditorSection::Special],
     },
     SidebarSection {
         title: "Layers & Mods",
@@ -153,6 +154,7 @@ fn qmk_backlight_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_backlight_group(
             &QmkKeyPresenter,
+            common::ALL_BACKLIGHT_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     BacklightAction::Toggle => &["BL_TOGG", "QK_BACKLIGHT_TOGGLE"],
@@ -176,11 +178,10 @@ fn qmk_rgb_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_rgb_underglow_group(
             &QmkKeyPresenter,
+            common::QMK_RGB_UNDERGLOW_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     RgbAction::Toggle => &["RGB_TOG", "QK_UNDERGLOW_TOGGLE"],
-                    RgbAction::On => &["RGB_ON"],
-                    RgbAction::Off => &["RGB_OFF"],
                     RgbAction::EffectInc => &["RGB_MOD", "QK_UNDERGLOW_MODE_NEXT"],
                     RgbAction::EffectDec => &["RGB_RMOD", "QK_UNDERGLOW_MODE_PREVIOUS"],
                     RgbAction::HueInc => &["RGB_HUI", "QK_UNDERGLOW_HUE_UP"],
@@ -205,19 +206,19 @@ fn qmk_rgb_matrix_groups() -> &'static [CandidateGroup] {
             &QmkKeyPresenter,
             |act| -> &'static [&'static str] {
                 match act {
-                    RgbMatrixAction::Toggle => &["RGB_MATRIX_TOGGLE"],
-                    RgbMatrixAction::On => &["RGB_MATRIX_ON"],
-                    RgbMatrixAction::Off => &["RGB_MATRIX_OFF"],
-                    RgbMatrixAction::ModeNext => &["RGB_MATRIX_MODE_NEXT"],
-                    RgbMatrixAction::ModePrev => &["RGB_MATRIX_MODE_PREVIOUS"],
-                    RgbMatrixAction::HueInc => &["RGB_MATRIX_HUE_UP"],
-                    RgbMatrixAction::HueDec => &["RGB_MATRIX_HUE_DOWN"],
-                    RgbMatrixAction::SatInc => &["RGB_MATRIX_SATURATION_UP"],
-                    RgbMatrixAction::SatDec => &["RGB_MATRIX_SATURATION_DOWN"],
-                    RgbMatrixAction::BrightInc => &["RGB_MATRIX_VALUE_UP"],
-                    RgbMatrixAction::BrightDec => &["RGB_MATRIX_VALUE_DOWN"],
-                    RgbMatrixAction::SpeedInc => &["RGB_MATRIX_SPEED_UP"],
-                    RgbMatrixAction::SpeedDec => &["RGB_MATRIX_SPEED_DOWN"],
+                    RgbMatrixAction::On => &["RM_ON", "QK_RGB_MATRIX_ON"],
+                    RgbMatrixAction::Off => &["RM_OFF", "QK_RGB_MATRIX_OFF"],
+                    RgbMatrixAction::Toggle => &["RM_TOGG", "QK_RGB_MATRIX_TOGGLE"],
+                    RgbMatrixAction::ModeNext => &["RM_NEXT", "QK_RGB_MATRIX_MODE_NEXT"],
+                    RgbMatrixAction::ModePrev => &["RM_PREV", "QK_RGB_MATRIX_MODE_PREVIOUS"],
+                    RgbMatrixAction::HueInc => &["RM_HUEU", "QK_RGB_MATRIX_HUE_UP"],
+                    RgbMatrixAction::HueDec => &["RM_HUED", "QK_RGB_MATRIX_HUE_DOWN"],
+                    RgbMatrixAction::SatInc => &["RM_SATU", "QK_RGB_MATRIX_SATURATION_UP"],
+                    RgbMatrixAction::SatDec => &["RM_SATD", "QK_RGB_MATRIX_SATURATION_DOWN"],
+                    RgbMatrixAction::BrightInc => &["RM_VALU", "QK_RGB_MATRIX_VALUE_UP"],
+                    RgbMatrixAction::BrightDec => &["RM_VALD", "QK_RGB_MATRIX_VALUE_DOWN"],
+                    RgbMatrixAction::SpeedInc => &["RM_SPDU", "QK_RGB_MATRIX_SPEED_UP"],
+                    RgbMatrixAction::SpeedDec => &["RM_SPDD", "QK_RGB_MATRIX_SPEED_DOWN"],
                     _ => &[],
                 }
             },
@@ -291,9 +292,11 @@ fn qmk_special_groups() -> &'static [CandidateGroup] {
                 match spec {
                     KeySpec::Transparent => &["KC_TRNS"],
                     KeySpec::None => &["KC_NO"],
-                    KeySpec::CapsWord => &["QK_CAPS_WORD_TOGGLE"],
-                    KeySpec::KeyRepeat => &["QK_KEY_REPEAT"],
-                    KeySpec::GraveEscape => &["QK_GRAVE_ESCAPE"],
+                    KeySpec::CapsWord => &["QK_CAPS_WORD_TOGGLE", "CW_TOGG"],
+                    KeySpec::KeyRepeat => &["QK_KEY_REPEAT", "QK_REP"],
+                    KeySpec::AltKeyRepeat => &["QK_ALT_REPEAT_KEY", "QK_AREP"],
+                    KeySpec::KeyLock => &["QK_LOCK"],
+                    KeySpec::GraveEscape => &["QK_GRAVE_ESCAPE", "QK_GESC"],
                     KeySpec::KeyPress { key, .. } => match key.id {
                         0x82 => &["KC_LOCKING_CAPS_LOCK", "KC_LCAP"],
                         0x83 => &["KC_LOCKING_NUM_LOCK", "KC_LNUM"],
@@ -329,7 +332,59 @@ fn qmk_special_groups() -> &'static [CandidateGroup] {
 
 fn qmk_custom_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
-    GROUPS.get_or_init(|| common::build_custom_groups(&QmkKeyPresenter))
+    GROUPS.get_or_init(|| {
+        let mut groups = common::build_custom_groups(&QmkKeyPresenter);
+        let dm_keys = [
+            (
+                Keycode::QK_DYNAMIC_MACRO_RECORD_START_1 as u16,
+                &["DM_REC1", "DM Rec 1", "dm record 1"][..],
+            ),
+            (
+                Keycode::QK_DYNAMIC_MACRO_RECORD_START_2 as u16,
+                &["DM_REC2", "DM Rec 2", "dm record 2"][..],
+            ),
+            (
+                Keycode::QK_DYNAMIC_MACRO_RECORD_STOP as u16,
+                &["DM_RSTP", "DM Stop", "dm stop"][..],
+            ),
+            (
+                Keycode::QK_DYNAMIC_MACRO_PLAY_1 as u16,
+                &["DM_PLY1", "DM Play 1", "dm play 1"][..],
+            ),
+            (
+                Keycode::QK_DYNAMIC_MACRO_PLAY_2 as u16,
+                &["DM_PLY2", "DM Play 2", "dm play 2"][..],
+            ),
+        ];
+
+        let dm_candidates: Vec<Candidate> = dm_keys
+            .into_iter()
+            .map(|(code, tokens)| {
+                let name = super::keycode_labels::try_resolve_qmk_key(code)
+                    .map(|lk| lk.tap.full)
+                    .unwrap_or_else(|| format!("0x{code:04X}"));
+                let spec = KeySpec::Custom(CustomBinding {
+                    kind: CustomKind::Raw,
+                    id: code as u32,
+                    name: Some(name),
+                    param1: None,
+                    param2: None,
+                });
+                let mut cand = Candidate::from_action(spec, &QmkKeyPresenter, &[]);
+                for &token in tokens {
+                    cand = cand.with_search_token(token);
+                }
+                cand
+            })
+            .collect();
+
+        groups.push(CandidateGroup {
+            name: "Dynamic Macro",
+            candidates: dm_candidates,
+        });
+
+        groups
+    })
 }
 
 const QMK_LAYER_OPS: [(&str, LayerActivation, &[&str]); 6] = [
@@ -393,6 +448,7 @@ impl EditorProfile for QmkEditorProfile {
             | EditorSection::Combo
             | EditorSection::ModTap
             | EditorSection::OneShot => qmk_tap_categories(),
+            EditorSection::Special => qmk_special_groups(),
             EditorSection::Backlight => qmk_backlight_groups(),
             EditorSection::Rgb => qmk_rgb_groups(),
             EditorSection::RgbMatrix => qmk_rgb_matrix_groups(),

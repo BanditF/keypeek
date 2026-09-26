@@ -78,6 +78,11 @@ pub trait EditorProfile: KeyPresenter + Send + Sync {
         false
     }
 
+    /// Returns whether this profile supports setting an explicit backlight level keycode/binding.
+    fn supports_backlight_level(&self) -> bool {
+        false
+    }
+
     /// Parses a raw keycode string into a [`KeySpec`].
     fn parse_raw_keycode(&self, _raw: &str) -> Option<KeySpec> {
         None

@@ -177,6 +177,8 @@ impl KeyDraft {
             }
             KeySpec::CapsWord
             | KeySpec::KeyRepeat
+            | KeySpec::AltKeyRepeat
+            | KeySpec::KeyLock
             | KeySpec::GraveEscape
             | KeySpec::Transparent
             | KeySpec::None => {

@@ -211,6 +211,8 @@ pub fn keyspec_to_qmk(spec: &KeySpec) -> Result<u16, DeviceError> {
         KeySpec::GraveEscape => Ok(Keycode::QK_GRAVE_ESCAPE as u16),
         KeySpec::CapsWord => Ok(Keycode::QK_CAPS_WORD_TOGGLE as u16),
         KeySpec::KeyRepeat => Ok(Keycode::QK_REPEAT_KEY as u16),
+        KeySpec::AltKeyRepeat => Ok(Keycode::QK_ALT_REPEAT_KEY as u16),
+        KeySpec::KeyLock => Ok(Keycode::QK_LOCK as u16),
 
         KeySpec::Power(PowerAction::Bootloader) => Ok(Keycode::QK_BOOTLOADER as u16),
         KeySpec::Power(PowerAction::Reset) => Ok(Keycode::QK_REBOOT as u16),
@@ -339,6 +341,8 @@ fn qmk_special_keycode_to_spec(kc: Keycode) -> Option<KeySpec> {
         Keycode::QK_GRAVE_ESCAPE => Some(KeySpec::GraveEscape),
         Keycode::QK_CAPS_WORD_TOGGLE => Some(KeySpec::CapsWord),
         Keycode::QK_REPEAT_KEY => Some(KeySpec::KeyRepeat),
+        Keycode::QK_ALT_REPEAT_KEY => Some(KeySpec::AltKeyRepeat),
+        Keycode::QK_LOCK => Some(KeySpec::KeyLock),
         Keycode::QK_BOOTLOADER => Some(KeySpec::Power(PowerAction::Bootloader)),
         Keycode::QK_REBOOT => Some(KeySpec::Power(PowerAction::Reset)),
         Keycode::QK_CLEAR_EEPROM => Some(KeySpec::Power(PowerAction::Other(0xEE))),

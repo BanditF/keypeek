@@ -352,6 +352,8 @@ pub enum KeySpec {
     /// Typing extensions
     CapsWord,
     KeyRepeat,
+    AltKeyRepeat,
+    KeyLock,
     GraveEscape,
     /// Hardware and connectivity controls
     Bluetooth(BluetoothAction),

@@ -203,6 +203,12 @@ pub fn keyspec_to_zmk(spec: &KeySpec) -> Result<Behavior, DeviceError> {
         },
         KeySpec::CapsWord => Ok(Behavior::CapsWord),
         KeySpec::KeyRepeat => Ok(Behavior::KeyRepeat),
+        KeySpec::AltKeyRepeat => Err(DeviceError::Unsupported(
+            "Alt Repeat key is not supported in ZMK".to_string(),
+        )),
+        KeySpec::KeyLock => Err(DeviceError::Unsupported(
+            "Key lock is not supported in ZMK".to_string(),
+        )),
         KeySpec::GraveEscape => Ok(Behavior::GraveEscape),
         KeySpec::Power(pwr) => match pwr {
             PowerAction::Reset => Ok(Behavior::Reset),

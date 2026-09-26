@@ -148,6 +148,16 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
             ..Default::default()
         }),
 
+        KeySpec::AltKeyRepeat => Some(LayoutKey {
+            tap: Label::with_short("Alt Repeat", "ARep"),
+            ..Default::default()
+        }),
+
+        KeySpec::KeyLock => Some(LayoutKey {
+            tap: Label::with_short("Lock", "Lock"),
+            ..Default::default()
+        }),
+
         KeySpec::GraveEscape => Some(LayoutKey {
             tap: Label::with_short("Grave Esc", "G/E"),
             ..Default::default()

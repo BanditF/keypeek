@@ -13,7 +13,11 @@ use keypeek_core::{
 const ZMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 5] = [
     SidebarSection {
         title: "Keys",
-        items: &[EditorSection::Keyboard, EditorSection::KeyToggle],
+        items: &[
+            EditorSection::Keyboard,
+            EditorSection::KeyToggle,
+            EditorSection::Special,
+        ],
     },
     SidebarSection {
         title: "Layers & Mods",
@@ -191,6 +195,7 @@ fn zmk_backlight_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_backlight_group(
             &ZmkKeyPresenter,
+            common::ZMK_BACKLIGHT_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     BacklightAction::Toggle => &["&bl BL_TOG"],
@@ -211,6 +216,7 @@ fn zmk_rgb_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_rgb_underglow_group(
             &ZmkKeyPresenter,
+            common::ALL_RGB_UNDERGLOW_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     RgbAction::Toggle => &["&rgb_ug RGB_TOG"],
@@ -249,6 +255,8 @@ fn zmk_mouse_groups() -> &'static [CandidateGroup] {
                 KeySpec::Mouse(MouseAction::Move { x: 1, y: 0 }) => &["&mmv MOVE_RIGHT"],
                 KeySpec::Mouse(MouseAction::Scroll { x: 0, y: 1 }) => &["&msc SCRL_UP"],
                 KeySpec::Mouse(MouseAction::Scroll { x: 0, y: -1 }) => &["&msc SCRL_DOWN"],
+                KeySpec::Mouse(MouseAction::Scroll { x: -1, y: 0 }) => &["&msc SCRL_LEFT"],
+                KeySpec::Mouse(MouseAction::Scroll { x: 1, y: 0 }) => &["&msc SCRL_RIGHT"],
                 _ => &[],
             }
         })
@@ -350,6 +358,7 @@ impl EditorProfile for ZmkEditorProfile {
             | EditorSection::Combo
             | EditorSection::ModTap
             | EditorSection::OneShot => zmk_tap_categories(),
+            EditorSection::Special => zmk_special_groups(),
             EditorSection::Bluetooth => zmk_bluetooth_groups(),
             EditorSection::Output => zmk_output_groups(),
             EditorSection::Backlight => zmk_backlight_groups(),
@@ -387,6 +396,10 @@ impl EditorProfile for ZmkEditorProfile {
     }
 
     fn supports_oneshot_keys(&self) -> bool {
+        true
+    }
+
+    fn supports_backlight_level(&self) -> bool {
         true
     }
 }

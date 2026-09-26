@@ -270,11 +270,7 @@ impl EditorState {
         id_salt: &str,
     ) {
         let is_valid = self.draft.is_valid();
-        let mods_supported = self
-            .draft
-            .tap_key
-            .map(|k| k.page == 0x07)
-            .unwrap_or(true);
+        let mods_supported = self.draft.tap_key.map(|k| k.page == 0x07).unwrap_or(true);
 
         section_headline(ui, "Modifiers");
         self.draw_mod_grid(
@@ -420,21 +416,23 @@ impl EditorState {
             ui.add_space(SECTION_SPACING);
         }
 
-        section_headline(ui, "Brightness Level");
-        ui.horizontal(|ui| {
-            ui.label("Level:");
-            let drag = ui.add(
-                egui::DragValue::new(&mut self.draft.backlight_level)
-                    .range(0..=255)
-                    .speed(1),
-            );
-            if drag.changed() || ui.button("Set").clicked() {
-                let spec = KeySpec::Lighting(LightingAction::Backlight(BacklightAction::Set(
-                    self.draft.backlight_level,
-                )));
-                self.commit_action(ctx.keyboard, ctx.target, spec);
-            }
-        });
+        if ctx.profile.supports_backlight_level() {
+            section_headline(ui, "Brightness Level");
+            ui.horizontal(|ui| {
+                ui.label("Level:");
+                let drag = ui.add(
+                    egui::DragValue::new(&mut self.draft.backlight_level)
+                        .range(0..=255)
+                        .speed(1),
+                );
+                if drag.changed() || ui.button("Set").clicked() {
+                    let spec = KeySpec::Lighting(LightingAction::Backlight(BacklightAction::Set(
+                        self.draft.backlight_level,
+                    )));
+                    self.commit_action(ctx.keyboard, ctx.target, spec);
+                }
+            });
+        }
     }
 
     fn draw_layer_mod_page(&mut self, ui: &mut egui::Ui, ctx: &PageContext<'_>) {

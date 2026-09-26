@@ -214,7 +214,7 @@ pub fn is_audio_video_consumer_usage(usage_id: u16) -> bool {
         | 0xB7          // Stop
         | 0xB3          // Fast Forward
         | 0xB4          // Rewind
-        | 0xB8          // Eject
+        | 0xB8 // Eject
     )
 }
 
@@ -396,7 +396,8 @@ pub fn build_system_and_power_group(
     power_tokens_fn: impl Fn(PowerAction) -> &'static [&'static str],
 ) -> CandidateGroup {
     let mut candidates = build_system_group(presenter, system_tokens_fn).candidates;
-    candidates.extend(build_boot_power_group(presenter, boot_power_actions, power_tokens_fn).candidates);
+    candidates
+        .extend(build_boot_power_group(presenter, boot_power_actions, power_tokens_fn).candidates);
     CandidateGroup {
         name: "System & Power",
         candidates,
@@ -423,33 +424,90 @@ pub fn build_boot_power_group(
     }
 }
 
+/// All supported backlight candidate actions.
+pub const ALL_BACKLIGHT_ACTIONS: &[BacklightAction] = &[
+    BacklightAction::Toggle,
+    BacklightAction::On,
+    BacklightAction::Off,
+    BacklightAction::Inc,
+    BacklightAction::Dec,
+    BacklightAction::Cycle,
+    BacklightAction::BreathingToggle,
+];
+
+/// Backlight candidate actions supported by ZMK (excluding breathing toggle).
+pub const ZMK_BACKLIGHT_ACTIONS: &[BacklightAction] = &[
+    BacklightAction::Toggle,
+    BacklightAction::On,
+    BacklightAction::Off,
+    BacklightAction::Inc,
+    BacklightAction::Dec,
+    BacklightAction::Cycle,
+];
+
+/// All supported RGB underglow candidate actions.
+pub const ALL_RGB_UNDERGLOW_ACTIONS: &[RgbAction] = &[
+    RgbAction::Toggle,
+    RgbAction::On,
+    RgbAction::Off,
+    RgbAction::EffectInc,
+    RgbAction::EffectDec,
+    RgbAction::HueInc,
+    RgbAction::HueDec,
+    RgbAction::SatInc,
+    RgbAction::SatDec,
+    RgbAction::BrightInc,
+    RgbAction::BrightDec,
+    RgbAction::SpeedInc,
+    RgbAction::SpeedDec,
+    RgbAction::EffectSet,
+    RgbAction::Color,
+];
+
+/// RGB underglow candidate actions supported by QMK (excluding On/Off, EffectSet, Color).
+pub const QMK_RGB_UNDERGLOW_ACTIONS: &[RgbAction] = &[
+    RgbAction::Toggle,
+    RgbAction::EffectInc,
+    RgbAction::EffectDec,
+    RgbAction::HueInc,
+    RgbAction::HueDec,
+    RgbAction::SatInc,
+    RgbAction::SatDec,
+    RgbAction::BrightInc,
+    RgbAction::BrightDec,
+    RgbAction::SpeedInc,
+    RgbAction::SpeedDec,
+];
+
 /// Builds the Backlight candidate group with optional extra firmware-specific tokens.
 pub fn build_backlight_group(
     presenter: &dyn KeyPresenter,
+    actions: &[BacklightAction],
     extra_tokens_fn: impl Fn(BacklightAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let bl_actions = [
-        (BacklightAction::Toggle, &["bl toggle", "backlight"][..]),
-        (BacklightAction::On, &["bl on", "backlight on"][..]),
-        (BacklightAction::Off, &["bl off", "backlight off"][..]),
-        (BacklightAction::Inc, &["bl inc", "backlight up"][..]),
-        (BacklightAction::Dec, &["bl dec", "backlight down"][..]),
-        (BacklightAction::Cycle, &["bl step", "backlight cycle"][..]),
+    let all_actions: &[(BacklightAction, &[&str])] = &[
+        (BacklightAction::Toggle, &["bl toggle", "backlight"]),
+        (BacklightAction::On, &["bl on", "backlight on"]),
+        (BacklightAction::Off, &["bl off", "backlight off"]),
+        (BacklightAction::Inc, &["bl inc", "backlight up"]),
+        (BacklightAction::Dec, &["bl dec", "backlight down"]),
+        (BacklightAction::Cycle, &["bl step", "backlight cycle"]),
         (
             BacklightAction::BreathingToggle,
-            &["bl breath", "bl breathing"][..],
+            &["bl breath", "bl breathing"],
         ),
     ];
 
-    let candidates = bl_actions
-        .into_iter()
+    let candidates = all_actions
+        .iter()
+        .filter(|(action, _)| actions.contains(action))
         .map(|(action, names)| {
             action_candidate(
-                KeySpec::Lighting(LightingAction::Backlight(action)),
+                KeySpec::Lighting(LightingAction::Backlight(*action)),
                 names,
                 presenter,
             )
-            .with_search_tokens(extra_tokens_fn(action).iter().copied())
+            .with_search_tokens(extra_tokens_fn(*action).iter().copied())
         })
         .collect();
 
@@ -462,35 +520,37 @@ pub fn build_backlight_group(
 /// Builds the RGB Underglow candidate group with optional extra firmware-specific tokens.
 pub fn build_rgb_underglow_group(
     presenter: &dyn KeyPresenter,
+    actions: &[RgbAction],
     extra_tokens_fn: impl Fn(RgbAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let rgb_actions = [
-        (RgbAction::Toggle, &["rgb toggle", "rgb tog"][..]),
-        (RgbAction::On, &["rgb on", "underglow on"][..]),
-        (RgbAction::Off, &["rgb off", "underglow off"][..]),
-        (RgbAction::EffectInc, &["rgb mode", "rgb next"][..]),
-        (RgbAction::EffectDec, &["rgb prev"][..]),
-        (RgbAction::HueInc, &["rgb hue+", "hue up"][..]),
-        (RgbAction::HueDec, &["rgb hue-", "hue down"][..]),
-        (RgbAction::SatInc, &["rgb sat+", "sat up"][..]),
-        (RgbAction::SatDec, &["rgb sat-", "sat down"][..]),
-        (RgbAction::BrightInc, &["rgb val+", "bri up"][..]),
-        (RgbAction::BrightDec, &["rgb val-", "bri down"][..]),
-        (RgbAction::SpeedInc, &["rgb speed+", "spd up"][..]),
-        (RgbAction::SpeedDec, &["rgb speed-", "spd down"][..]),
-        (RgbAction::EffectSet, &["rgb effect set", "eff set"][..]),
-        (RgbAction::Color, &["rgb color", "color"][..]),
+    let all_actions: &[(RgbAction, &[&str])] = &[
+        (RgbAction::Toggle, &["rgb toggle", "rgb tog"]),
+        (RgbAction::On, &["rgb on", "underglow on"]),
+        (RgbAction::Off, &["rgb off", "underglow off"]),
+        (RgbAction::EffectInc, &["rgb mode", "rgb next"]),
+        (RgbAction::EffectDec, &["rgb prev"]),
+        (RgbAction::HueInc, &["rgb hue+", "hue up"]),
+        (RgbAction::HueDec, &["rgb hue-", "hue down"]),
+        (RgbAction::SatInc, &["rgb sat+", "sat up"]),
+        (RgbAction::SatDec, &["rgb sat-", "sat down"]),
+        (RgbAction::BrightInc, &["rgb val+", "bri up"]),
+        (RgbAction::BrightDec, &["rgb val-", "bri down"]),
+        (RgbAction::SpeedInc, &["rgb speed+", "spd up"]),
+        (RgbAction::SpeedDec, &["rgb speed-", "spd down"]),
+        (RgbAction::EffectSet, &["rgb effect set", "eff set"]),
+        (RgbAction::Color, &["rgb color", "color"]),
     ];
 
-    let candidates = rgb_actions
-        .into_iter()
+    let candidates = all_actions
+        .iter()
+        .filter(|(action, _)| actions.contains(action))
         .map(|(action, names)| {
             action_candidate(
-                KeySpec::Lighting(LightingAction::Rgb(action)),
+                KeySpec::Lighting(LightingAction::Rgb(*action)),
                 names,
                 presenter,
             )
-            .with_search_tokens(extra_tokens_fn(action).iter().copied())
+            .with_search_tokens(extra_tokens_fn(*action).iter().copied())
         })
         .collect();
 
@@ -501,42 +561,47 @@ pub fn build_rgb_underglow_group(
 }
 
 /// Builds the RGB Matrix candidate group with optional extra firmware-specific tokens.
+///
+/// Includes On and Off candidates (`QK_RGB_MATRIX_ON` / `QK_RGB_MATRIX_OFF`, aliases `RM_ON`
+/// / `RM_OFF`) which are valid QMK keycodes.
 pub fn build_rgb_matrix_group(
     presenter: &dyn KeyPresenter,
     extra_tokens_fn: impl Fn(RgbMatrixAction) -> &'static [&'static str],
 ) -> CandidateGroup {
     let actions = [
+        (RgbMatrixAction::On, &["rgb matrix on", "rm_on"][..]),
+        (RgbMatrixAction::Off, &["rgb matrix off", "rm_off"][..]),
         (
             RgbMatrixAction::Toggle,
-            &["rgb matrix toggle", "rgb_tog"][..],
+            &["rgb matrix toggle", "rm_togg"][..],
         ),
         (
             RgbMatrixAction::ModeNext,
-            &["rgb matrix next", "rgb_mod"][..],
+            &["rgb matrix next", "rm_next"][..],
         ),
         (
             RgbMatrixAction::ModePrev,
-            &["rgb matrix prev", "rgb_rmod"][..],
+            &["rgb matrix prev", "rm_prev"][..],
         ),
-        (RgbMatrixAction::HueInc, &["rgb matrix hue+", "rgb_hui"][..]),
-        (RgbMatrixAction::HueDec, &["rgb matrix hue-", "rgb_hud"][..]),
-        (RgbMatrixAction::SatInc, &["rgb matrix sat+", "rgb_sai"][..]),
-        (RgbMatrixAction::SatDec, &["rgb matrix sat-", "rgb_sad"][..]),
+        (RgbMatrixAction::HueInc, &["rgb matrix hue+", "rm_hueu"][..]),
+        (RgbMatrixAction::HueDec, &["rgb matrix hue-", "rm_hued"][..]),
+        (RgbMatrixAction::SatInc, &["rgb matrix sat+", "rm_satu"][..]),
+        (RgbMatrixAction::SatDec, &["rgb matrix sat-", "rm_satd"][..]),
         (
             RgbMatrixAction::BrightInc,
-            &["rgb matrix val+", "rgb_vai"][..],
+            &["rgb matrix val+", "rm_valu"][..],
         ),
         (
             RgbMatrixAction::BrightDec,
-            &["rgb matrix val-", "rgb_vad"][..],
+            &["rgb matrix val-", "rm_vald"][..],
         ),
         (
             RgbMatrixAction::SpeedInc,
-            &["rgb matrix speed+", "rgb_spi"][..],
+            &["rgb matrix speed+", "rm_spdu"][..],
         ),
         (
             RgbMatrixAction::SpeedDec,
-            &["rgb matrix speed-", "rgb_spd"][..],
+            &["rgb matrix speed-", "rm_spdd"][..],
         ),
     ];
     let candidates = actions
@@ -727,6 +792,11 @@ pub fn build_special_group(
     let mut actions: Vec<(KeySpec, &[&str])> = vec![
         (KeySpec::CapsWord, &["caps word", "caps_word", "cw"]),
         (KeySpec::KeyRepeat, &["key repeat", "key_repeat", "repeat"]),
+        (
+            KeySpec::AltKeyRepeat,
+            &["alt repeat", "alt_repeat", "arep", "repeat opposite"],
+        ),
+        (KeySpec::KeyLock, &["key lock", "lock key", "lock"]),
         (KeySpec::GraveEscape, &["grave escape", "grave_esc"]),
         (
             KeySpec::KeyPress {
@@ -809,8 +879,18 @@ pub fn build_special_group(
 
     // Extended Function Keys F13..=F24
     let f_aliases: [&[&str]; 12] = [
-        &["f13"], &["f14"], &["f15"], &["f16"], &["f17"], &["f18"],
-        &["f19"], &["f20"], &["f21"], &["f22"], &["f23"], &["f24"],
+        &["f13"],
+        &["f14"],
+        &["f15"],
+        &["f16"],
+        &["f17"],
+        &["f18"],
+        &["f19"],
+        &["f20"],
+        &["f21"],
+        &["f22"],
+        &["f23"],
+        &["f24"],
     ];
     for (i, usage) in (0x68..=0x73u16).enumerate() {
         actions.push((

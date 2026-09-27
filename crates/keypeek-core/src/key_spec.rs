@@ -140,6 +140,8 @@ pub enum LayerActivation {
     LayerMod(Modifiers),
     /// Switches the default layer (for example QMK `DF`).
     Default,
+    /// Switches the default layer and saves to EEPROM (for example QMK `PDF`).
+    PersistentDefault,
     /// Tap to toggle, hold for momentary activation (for example QMK `TT(layer)`).
     TapToggle,
 }
@@ -310,6 +312,84 @@ pub struct CustomBinding {
     pub param2: Option<CustomParam>,
 }
 
+/// Space Cadet modifier-symbol dual action (tap for symbol, hold for modifier).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SpaceCadet {
+    LeftCtrlOpenParen,
+    RightCtrlCloseParen,
+    LeftShiftOpenParen,
+    RightShiftCloseParen,
+    LeftAltOpenParen,
+    RightAltCloseParen,
+    RightShiftEnter,
+}
+
+impl SpaceCadet {
+    /// Returns the USB HID Keyboard/Keypad usage ID (Page 0x07) for the underlying modifier.
+    pub const fn base_hid_usage(self) -> u16 {
+        match self {
+            Self::LeftCtrlOpenParen => 0xE0,
+            Self::RightCtrlCloseParen => 0xE4,
+            Self::LeftShiftOpenParen => 0xE1,
+            Self::RightShiftCloseParen => 0xE5,
+            Self::LeftAltOpenParen => 0xE2,
+            Self::RightAltCloseParen => 0xE6,
+            Self::RightShiftEnter => 0xE5,
+        }
+    }
+
+    /// Returns the symbol or action produced on tap.
+    pub const fn argument_label(self) -> &'static str {
+        match self {
+            Self::LeftCtrlOpenParen | Self::LeftShiftOpenParen | Self::LeftAltOpenParen => "(",
+            Self::RightCtrlCloseParen | Self::RightShiftCloseParen | Self::RightAltCloseParen => ")",
+            Self::RightShiftEnter => "Enter",
+        }
+    }
+}
+
+/// Auto Shift control action (for example QMK `KC_ASTG`, `KC_ASON`, `KC_ASOFF`, `KC_ASUP`, `KC_ASDN`, `KC_ASRP`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum AutoShiftAction {
+    Down,
+    Up,
+    Report,
+    On,
+    Off,
+    Toggle,
+}
+
+impl AutoShiftAction {
+    pub fn label(self) -> crate::layout_key::Label {
+        match self {
+            Self::Down => crate::layout_key::Label::with_short("AutoShift -", "AS -"),
+            Self::Up => crate::layout_key::Label::with_short("AutoShift +", "AS +"),
+            Self::Report => crate::layout_key::Label::with_short("AutoShift Rep", "AS R"),
+            Self::On => crate::layout_key::Label::with_short("AutoShift On", "AS On"),
+            Self::Off => crate::layout_key::Label::with_short("AutoShift Off", "ASOff"),
+            Self::Toggle => crate::layout_key::Label::with_short("AutoShift Tog", "AS Tg"),
+        }
+    }
+}
+
+/// Combo control action (for example QMK `CMB_ON`, `CMB_OFF`, `CMB_TOG`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ComboAction {
+    On,
+    Off,
+    Toggle,
+}
+
+impl ComboAction {
+    pub fn label(self) -> crate::layout_key::Label {
+        match self {
+            Self::On => crate::layout_key::Label::with_short("Combo On", "CombOn"),
+            Self::Off => crate::layout_key::Label::with_short("Combo Off", "CombOff"),
+            Self::Toggle => crate::layout_key::Label::with_short("Combo Toggle", "CombTg"),
+        }
+    }
+}
+
 /// Firmware-independent key assignment description.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum KeySpec {
@@ -355,6 +435,9 @@ pub enum KeySpec {
     AltKeyRepeat,
     KeyLock,
     GraveEscape,
+    SpaceCadet(SpaceCadet),
+    AutoShift(AutoShiftAction),
+    Combo(ComboAction),
     /// Hardware and connectivity controls
     Bluetooth(BluetoothAction),
     Output(OutputTarget),

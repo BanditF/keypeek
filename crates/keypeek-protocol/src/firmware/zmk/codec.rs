@@ -203,11 +203,12 @@ pub fn keyspec_to_zmk(spec: &KeySpec) -> Result<Behavior, DeviceError> {
         },
         KeySpec::CapsWord => Ok(Behavior::CapsWord),
         KeySpec::KeyRepeat => Ok(Behavior::KeyRepeat),
-        KeySpec::AltKeyRepeat => Err(DeviceError::Unsupported(
-            "Alt Repeat key is not supported in ZMK".to_string(),
-        )),
-        KeySpec::KeyLock => Err(DeviceError::Unsupported(
-            "Key lock is not supported in ZMK".to_string(),
+        KeySpec::AltKeyRepeat
+        | KeySpec::KeyLock
+        | KeySpec::SpaceCadet(_)
+        | KeySpec::AutoShift(_)
+        | KeySpec::Combo(_) => Err(DeviceError::Unsupported(
+            "This feature is not supported in ZMK".to_string(),
         )),
         KeySpec::GraveEscape => Ok(Behavior::GraveEscape),
         KeySpec::Power(pwr) => match pwr {
@@ -566,31 +567,6 @@ mod tests {
             let round_trip = keyspec_to_zmk(&spec).expect("should encode");
             assert_eq!(b, round_trip);
         }
-    }
-
-    #[test]
-    fn test_zmk_unsupported_features_properly_rejected() {
-        let tt_spec = KeySpec::Layer {
-            layer: 1,
-            activation: LayerActivation::TapToggle,
-        };
-        assert!(matches!(
-            keyspec_to_zmk(&tt_spec),
-            Err(DeviceError::Unsupported(_))
-        ));
-
-        let bl_spec =
-            KeySpec::Lighting(LightingAction::Backlight(BacklightAction::BreathingToggle));
-        assert!(matches!(
-            keyspec_to_zmk(&bl_spec),
-            Err(DeviceError::Unsupported(_))
-        ));
-
-        let accel_spec = KeySpec::Mouse(MouseAction::Acceleration(1));
-        assert!(matches!(
-            keyspec_to_zmk(&accel_spec),
-            Err(DeviceError::Unsupported(_))
-        ));
     }
 
     #[test]

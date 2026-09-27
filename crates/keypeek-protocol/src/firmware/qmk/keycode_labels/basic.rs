@@ -16,6 +16,13 @@ pub fn get_basic_layout_key(keycode_bytes: u16) -> Option<LayoutKey> {
     None
 }
 
+fn space_cadet_layout_key(hid_usage: u16, arg: &'static str) -> Option<LayoutKey> {
+    let mut key = crate::hid_labels::hid_keyboard_key(hid_usage)?;
+    key.behavior = Some(Label::new("Cadet"));
+    key.argument = Some(Label::new(arg));
+    Some(key)
+}
+
 fn get_basic_layout_key_static(keycode: Keycode) -> Option<LayoutKey> {
     match keycode {
         Keycode::KC_SYSTEM_POWER => crate::hid_labels::hid_system_key(0x81),
@@ -832,36 +839,29 @@ fn get_basic_layout_key_static(keycode: Keycode) -> Option<LayoutKey> {
             tap: Label::new("Esc `"),
             ..Default::default()
         }),
+        Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN => {
+            space_cadet_layout_key(0xE1, "(")
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE => {
+            space_cadet_layout_key(0xE5, ")")
+        }
+        Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN => {
+            space_cadet_layout_key(0xE0, "(")
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE => {
+            space_cadet_layout_key(0xE4, ")")
+        }
+        Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN => {
+            space_cadet_layout_key(0xE2, "(")
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE => {
+            space_cadet_layout_key(0xE6, ")")
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER => {
+            space_cadet_layout_key(0xE5, "Enter")
+        }
         Keycode::QK_VELOCIKEY_TOGGLE => Some(LayoutKey {
             tap: Label::with_short("Velocikey", "VelKey"),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN => Some(LayoutKey {
-            tap: Label::new("LC ("),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE => Some(LayoutKey {
-            tap: Label::new("RC )"),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN => Some(LayoutKey {
-            tap: Label::new("LS ("),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE => Some(LayoutKey {
-            tap: Label::new("RS )"),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN => Some(LayoutKey {
-            tap: Label::new("LA ("),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE => Some(LayoutKey {
-            tap: Label::new("RA )"),
-            ..Default::default()
-        }),
-        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER => Some(LayoutKey {
-            tap: Label::new("SftEnt"),
             ..Default::default()
         }),
         Keycode::QK_OUTPUT_AUTO => Some(LayoutKey {

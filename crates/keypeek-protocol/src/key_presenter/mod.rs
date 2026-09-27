@@ -99,7 +99,9 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
                 }
                 LayerActivation::Toggle | LayerActivation::To => (BorderStyle::Solid, None),
                 LayerActivation::Sticky => (BorderStyle::Dashed, None),
-                LayerActivation::Default => (BorderStyle::Solid, None),
+                LayerActivation::Default | LayerActivation::PersistentDefault => {
+                    (BorderStyle::Solid, None)
+                }
                 LayerActivation::LayerMod(mods) => {
                     (BorderStyle::None, (!mods.is_empty()).then(|| mods.label()))
                 }
@@ -110,12 +112,20 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
                 .map(|n| Label::new(n.as_str()))
                 .unwrap_or_else(|| Label::new(format!("L{}", layer)));
             let mut key = layer_switch_key(*layer, name_label, border);
-            if let LayerActivation::LayerMod(mods) = activation {
-                key.argument = argument;
-                let mask = mods.to_held_mod_mask();
-                key.mod_mask = (mask != 0).then_some(mask);
-            } else if matches!(activation, LayerActivation::Default) {
-                key.layer_ref = None;
+            match activation {
+                LayerActivation::LayerMod(mods) => {
+                    key.argument = argument;
+                    let mask = mods.to_held_mod_mask();
+                    key.mod_mask = (mask != 0).then_some(mask);
+                }
+                LayerActivation::Default => {
+                    key.layer_ref = None;
+                }
+                LayerActivation::PersistentDefault => {
+                    key.layer_ref = None;
+                    key.behavior = Some(Label::new("PDF"));
+                }
+                _ => {}
             }
             Some(key)
         }
@@ -160,6 +170,23 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
 
         KeySpec::GraveEscape => Some(LayoutKey {
             tap: Label::with_short("Grave Esc", "G/E"),
+            ..Default::default()
+        }),
+
+        KeySpec::SpaceCadet(cadet) => {
+            let mut key = crate::hid_labels::hid_keyboard_key(cadet.base_hid_usage())?;
+            key.behavior = Some(Label::new("Cadet"));
+            key.argument = Some(Label::new(cadet.argument_label()));
+            Some(key)
+        }
+
+        KeySpec::AutoShift(act) => Some(LayoutKey {
+            tap: act.label(),
+            ..Default::default()
+        }),
+
+        KeySpec::Combo(act) => Some(LayoutKey {
+            tap: act.label(),
             ..Default::default()
         }),
 

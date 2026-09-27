@@ -2,8 +2,9 @@
 
 use crate::protocols::DeviceError;
 use keypeek_core::{
-    AudioAction, BacklightAction, CustomBinding, CustomKind, HidKey, KeySpec, LayerActivation,
-    LightingAction, Modifiers, MouseAction, MouseButton, PowerAction, RgbAction, RgbMatrixAction,
+    AudioAction, AutoShiftAction, BacklightAction, ComboAction, CustomBinding, CustomKind, HidKey,
+    KeySpec, LayerActivation, LightingAction, Modifiers, MouseAction, MouseButton, PowerAction,
+    RgbAction, RgbMatrixAction, SpaceCadet,
 };
 use qmk_via_api::keycodes::Keycode;
 use qmk_via_api::ranges::*;
@@ -49,6 +50,7 @@ pub fn qmk_to_keyspec(code: u16) -> KeySpec {
                 QmkLayerOp::To => LayerActivation::To,
                 QmkLayerOp::OneShot => LayerActivation::Sticky,
                 QmkLayerOp::Default => LayerActivation::Default,
+                QmkLayerOp::PersistentDefault => LayerActivation::PersistentDefault,
             };
             KeySpec::Layer { layer, activation }
         }
@@ -196,6 +198,9 @@ pub fn keyspec_to_qmk(spec: &KeySpec) -> Result<u16, DeviceError> {
             LayerActivation::Default => QmkLayerOp::Default
                 .encode(*layer)
                 .ok_or_else(|| DeviceError::Unsupported(format!("Cannot encode DF({})", layer))),
+            LayerActivation::PersistentDefault => QmkLayerOp::PersistentDefault
+                .encode(*layer)
+                .ok_or_else(|| DeviceError::Unsupported(format!("Cannot encode PDF({})", layer))),
             LayerActivation::LayerMod(mods) => {
                 QmkKeycode::encode_layer_mod(*layer, to_qmk_mask(*mods))
                     .ok_or_else(|| DeviceError::Unsupported(format!("Cannot encode LM({})", layer)))
@@ -213,6 +218,40 @@ pub fn keyspec_to_qmk(spec: &KeySpec) -> Result<u16, DeviceError> {
         KeySpec::KeyRepeat => Ok(Keycode::QK_REPEAT_KEY as u16),
         KeySpec::AltKeyRepeat => Ok(Keycode::QK_ALT_REPEAT_KEY as u16),
         KeySpec::KeyLock => Ok(Keycode::QK_LOCK as u16),
+        KeySpec::SpaceCadet(cadet) => match cadet {
+            SpaceCadet::LeftCtrlOpenParen => {
+                Ok(Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN as u16)
+            }
+            SpaceCadet::RightCtrlCloseParen => {
+                Ok(Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE as u16)
+            }
+            SpaceCadet::LeftShiftOpenParen => {
+                Ok(Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN as u16)
+            }
+            SpaceCadet::RightShiftCloseParen => {
+                Ok(Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE as u16)
+            }
+            SpaceCadet::LeftAltOpenParen => {
+                Ok(Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN as u16)
+            }
+            SpaceCadet::RightAltCloseParen => {
+                Ok(Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE as u16)
+            }
+            SpaceCadet::RightShiftEnter => Ok(Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER as u16),
+        },
+        KeySpec::AutoShift(act) => match act {
+            AutoShiftAction::Down => Ok(Keycode::QK_AUTO_SHIFT_DOWN as u16),
+            AutoShiftAction::Up => Ok(Keycode::QK_AUTO_SHIFT_UP as u16),
+            AutoShiftAction::Report => Ok(Keycode::QK_AUTO_SHIFT_REPORT as u16),
+            AutoShiftAction::On => Ok(Keycode::QK_AUTO_SHIFT_ON as u16),
+            AutoShiftAction::Off => Ok(Keycode::QK_AUTO_SHIFT_OFF as u16),
+            AutoShiftAction::Toggle => Ok(Keycode::QK_AUTO_SHIFT_TOGGLE as u16),
+        },
+        KeySpec::Combo(act) => match act {
+            ComboAction::On => Ok(Keycode::QK_COMBO_ON as u16),
+            ComboAction::Off => Ok(Keycode::QK_COMBO_OFF as u16),
+            ComboAction::Toggle => Ok(Keycode::QK_COMBO_TOGGLE as u16),
+        },
 
         KeySpec::Power(PowerAction::Bootloader) => Ok(Keycode::QK_BOOTLOADER as u16),
         KeySpec::Power(PowerAction::Reset) => Ok(Keycode::QK_REBOOT as u16),
@@ -338,6 +377,42 @@ pub fn keyspec_to_qmk(spec: &KeySpec) -> Result<u16, DeviceError> {
 
 fn qmk_special_keycode_to_spec(kc: Keycode) -> Option<KeySpec> {
     match kc {
+        // Space Cadet
+        Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::LeftCtrlOpenParen))
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::RightCtrlCloseParen))
+        }
+        Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::LeftShiftOpenParen))
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::RightShiftCloseParen))
+        }
+        Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::LeftAltOpenParen))
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::RightAltCloseParen))
+        }
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER => {
+            Some(KeySpec::SpaceCadet(SpaceCadet::RightShiftEnter))
+        }
+
+        // Auto Shift
+        Keycode::QK_AUTO_SHIFT_DOWN => Some(KeySpec::AutoShift(AutoShiftAction::Down)),
+        Keycode::QK_AUTO_SHIFT_UP => Some(KeySpec::AutoShift(AutoShiftAction::Up)),
+        Keycode::QK_AUTO_SHIFT_REPORT => Some(KeySpec::AutoShift(AutoShiftAction::Report)),
+        Keycode::QK_AUTO_SHIFT_ON => Some(KeySpec::AutoShift(AutoShiftAction::On)),
+        Keycode::QK_AUTO_SHIFT_OFF => Some(KeySpec::AutoShift(AutoShiftAction::Off)),
+        Keycode::QK_AUTO_SHIFT_TOGGLE => Some(KeySpec::AutoShift(AutoShiftAction::Toggle)),
+
+        // Combo
+        Keycode::QK_COMBO_ON => Some(KeySpec::Combo(ComboAction::On)),
+        Keycode::QK_COMBO_OFF => Some(KeySpec::Combo(ComboAction::Off)),
+        Keycode::QK_COMBO_TOGGLE => Some(KeySpec::Combo(ComboAction::Toggle)),
+
         Keycode::QK_GRAVE_ESCAPE => Some(KeySpec::GraveEscape),
         Keycode::QK_CAPS_WORD_TOGGLE => Some(KeySpec::CapsWord),
         Keycode::QK_REPEAT_KEY => Some(KeySpec::KeyRepeat),
@@ -799,6 +874,24 @@ mod tests {
             Keycode::KC_SYSTEM_SLEEP as u16,
             Keycode::KC_SYSTEM_WAKE as u16,
             Keycode::QK_GRAVE_ESCAPE as u16,
+            Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN as u16,
+            Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE as u16,
+            Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN as u16,
+            Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE as u16,
+            Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN as u16,
+            Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE as u16,
+            Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER as u16,
+            Keycode::QK_AUTO_SHIFT_DOWN as u16,
+            Keycode::QK_AUTO_SHIFT_UP as u16,
+            Keycode::QK_AUTO_SHIFT_REPORT as u16,
+            Keycode::QK_AUTO_SHIFT_ON as u16,
+            Keycode::QK_AUTO_SHIFT_OFF as u16,
+            Keycode::QK_AUTO_SHIFT_TOGGLE as u16,
+            Keycode::QK_COMBO_ON as u16,
+            Keycode::QK_COMBO_OFF as u16,
+            Keycode::QK_COMBO_TOGGLE as u16,
+            QmkLayerOp::PersistentDefault.encode(0).unwrap(),
+            QmkLayerOp::PersistentDefault.encode(3).unwrap(),
             Keycode::QK_BOOTLOADER as u16,
             Keycode::QK_UNDERGLOW_TOGGLE as u16,
             Keycode::QK_BACKLIGHT_TOGGLE_BREATHING as u16,

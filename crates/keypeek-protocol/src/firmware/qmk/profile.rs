@@ -6,8 +6,9 @@ use keypeek_core::keymap_editor::draft::EditorSection;
 use keypeek_core::keymap_editor::profile::{EditorProfile, SidebarSection};
 use keypeek_core::keymap_editor::{Candidate, CandidateGroup, LayerTapTarget};
 use keypeek_core::{
-    AudioAction, BacklightAction, CustomBinding, CustomKind, KeyPresenter, KeySpec,
-    LayerActivation, LayoutKey, MouseAction, MouseButton, PowerAction, RgbAction, RgbMatrixAction,
+    AudioAction, AutoShiftAction, BacklightAction, ComboAction, CustomBinding, CustomKind,
+    KeyPresenter, KeySpec, LayerActivation, LayoutKey, MouseAction, MouseButton, PowerAction,
+    RgbAction, RgbMatrixAction, SpaceCadet,
 };
 use qmk_via_api::keycodes::Keycode;
 
@@ -143,6 +144,9 @@ fn qmk_tap_categories() -> &'static [CandidateGroup] {
             qmk_media_group().clone(),
             qmk_apps_and_web_group().clone(),
             qmk_special_groups()[0].clone(),
+            qmk_space_cadet_group().clone(),
+            qmk_auto_shift_group().clone(),
+            qmk_combo_group().clone(),
             qmk_system_and_power_group().clone(),
             qmk_international_group().clone(),
         ]
@@ -283,52 +287,167 @@ fn qmk_mouse_groups() -> &'static [CandidateGroup] {
     })
 }
 
+fn build_qmk_group(name: &'static str, items: &[(KeySpec, &[&'static str])]) -> CandidateGroup {
+    let candidates = items
+        .iter()
+        .map(|(spec, tokens)| {
+            let mut cand = Candidate::from_action(spec.clone(), &QmkKeyPresenter, &[]);
+            cand = cand.with_search_tokens(tokens.iter().copied());
+            cand
+        })
+        .collect();
+
+    CandidateGroup { name, candidates }
+}
+
+fn qmk_space_cadet_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        build_qmk_group(
+            "Space Cadet",
+            &[
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::LeftShiftOpenParen),
+                    &["KC_LSPO", "LSPO", "space cadet left shift", "shift (", "shift paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::RightShiftCloseParen),
+                    &["KC_RSPC", "RSPC", "space cadet right shift", "shift )", "shift paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::LeftCtrlOpenParen),
+                    &["KC_LCPO", "LCPO", "space cadet left ctrl", "ctrl (", "ctrl paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::RightCtrlCloseParen),
+                    &["KC_RCPC", "RCPC", "space cadet right ctrl", "ctrl )", "ctrl paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::LeftAltOpenParen),
+                    &["KC_LAPO", "LAPO", "space cadet left alt", "alt (", "alt paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::RightAltCloseParen),
+                    &["KC_RAPC", "RAPC", "space cadet right alt", "alt )", "alt paren"],
+                ),
+                (
+                    KeySpec::SpaceCadet(SpaceCadet::RightShiftEnter),
+                    &["KC_SFTENT", "SFTENT", "space cadet shift enter", "shift enter"],
+                ),
+            ],
+        )
+    })
+}
+
+fn qmk_auto_shift_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        build_qmk_group(
+            "Auto Shift",
+            &[
+                (
+                    KeySpec::AutoShift(AutoShiftAction::Down),
+                    &["QK_AUTO_SHIFT_DOWN", "AS_DOWN", "auto shift down", "autoshift down"],
+                ),
+                (
+                    KeySpec::AutoShift(AutoShiftAction::Up),
+                    &["QK_AUTO_SHIFT_UP", "AS_UP", "auto shift up", "autoshift up"],
+                ),
+                (
+                    KeySpec::AutoShift(AutoShiftAction::Report),
+                    &["QK_AUTO_SHIFT_REPORT", "AS_RPT", "auto shift report", "autoshift report"],
+                ),
+                (
+                    KeySpec::AutoShift(AutoShiftAction::On),
+                    &["QK_AUTO_SHIFT_ON", "AS_ON", "auto shift on", "autoshift on"],
+                ),
+                (
+                    KeySpec::AutoShift(AutoShiftAction::Off),
+                    &["QK_AUTO_SHIFT_OFF", "AS_OFF", "auto shift off", "autoshift off"],
+                ),
+                (
+                    KeySpec::AutoShift(AutoShiftAction::Toggle),
+                    &["QK_AUTO_SHIFT_TOGGLE", "AS_TOGG", "auto shift toggle", "autoshift toggle"],
+                ),
+            ],
+        )
+    })
+}
+
+fn qmk_combo_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        build_qmk_group(
+            "Combo Control",
+            &[
+                (
+                    KeySpec::Combo(ComboAction::Toggle),
+                    &["QK_COMBO_TOGGLE", "CM_TOGG", "combo toggle"],
+                ),
+                (
+                    KeySpec::Combo(ComboAction::On),
+                    &["QK_COMBO_ON", "CM_ON", "combo on"],
+                ),
+                (
+                    KeySpec::Combo(ComboAction::Off),
+                    &["QK_COMBO_OFF", "CM_OFF", "combo off"],
+                ),
+            ],
+        )
+    })
+}
+
 fn qmk_special_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
-        vec![common::build_special_group(
-            &QmkKeyPresenter,
-            |spec| -> &'static [&'static str] {
-                match spec {
-                    KeySpec::Transparent => &["KC_TRNS"],
-                    KeySpec::None => &["KC_NO"],
-                    KeySpec::CapsWord => &["QK_CAPS_WORD_TOGGLE", "CW_TOGG"],
-                    KeySpec::KeyRepeat => &["QK_KEY_REPEAT", "QK_REP"],
-                    KeySpec::AltKeyRepeat => &["QK_ALT_REPEAT_KEY", "QK_AREP"],
-                    KeySpec::KeyLock => &["QK_LOCK"],
-                    KeySpec::GraveEscape => &["QK_GRAVE_ESCAPE", "QK_GESC"],
-                    KeySpec::KeyPress { key, .. } => match key.id {
-                        0x82 => &["KC_LOCKING_CAPS_LOCK", "KC_LCAP"],
-                        0x83 => &["KC_LOCKING_NUM_LOCK", "KC_LNUM"],
-                        0x84 => &["KC_LOCKING_SCROLL_LOCK", "KC_LSCR"],
-                        0x7A => &["KC_UNDO"],
-                        0x7B => &["KC_CUT"],
-                        0x7C => &["KC_COPY"],
-                        0x7D => &["KC_PASTE"],
-                        0x7E => &["KC_FIND"],
-                        0x79 => &["KC_AGAIN"],
-                        0x78 => &["KC_STOP"],
-                        0x66 => &["KC_POWER", "KC_PWR"],
-                        0x68 => &["KC_F13"],
-                        0x69 => &["KC_F14"],
-                        0x6A => &["KC_F15"],
-                        0x6B => &["KC_F16"],
-                        0x6C => &["KC_F17"],
-                        0x6D => &["KC_F18"],
-                        0x6E => &["KC_F19"],
-                        0x6F => &["KC_F20"],
-                        0x70 => &["KC_F21"],
-                        0x71 => &["KC_F22"],
-                        0x72 => &["KC_F23"],
-                        0x73 => &["KC_F24"],
-                        _ => &[],
+        vec![
+            common::build_special_group(
+                &QmkKeyPresenter,
+                |spec| -> &'static [&'static str] {
+                    match spec {
+                        KeySpec::Transparent => &["KC_TRNS"],
+                        KeySpec::None => &["KC_NO"],
+                        KeySpec::CapsWord => &["QK_CAPS_WORD_TOGGLE", "CW_TOGG"],
+                        KeySpec::KeyRepeat => &["QK_KEY_REPEAT", "QK_REP"],
+                        KeySpec::AltKeyRepeat => &["QK_ALT_REPEAT_KEY", "QK_AREP"],
+                        KeySpec::KeyLock => &["QK_LOCK"],
+                        KeySpec::GraveEscape => &["QK_GRAVE_ESCAPE", "QK_GESC"],
+                            KeySpec::KeyPress { key, .. } => match key.id {
+                                0x82 => &["KC_LOCKING_CAPS_LOCK", "KC_LCAP"],
+                                0x83 => &["KC_LOCKING_NUM_LOCK", "KC_LNUM"],
+                                0x84 => &["KC_LOCKING_SCROLL_LOCK", "KC_LSCR"],
+                                0x7A => &["KC_UNDO"],
+                                0x7B => &["KC_CUT"],
+                                0x7C => &["KC_COPY"],
+                                0x7D => &["KC_PASTE"],
+                                0x7E => &["KC_FIND"],
+                                0x79 => &["KC_AGAIN"],
+                                0x78 => &["KC_STOP"],
+                                0x66 => &["KC_POWER", "KC_PWR"],
+                                0x68 => &["KC_F13"],
+                                0x69 => &["KC_F14"],
+                                0x6A => &["KC_F15"],
+                                0x6B => &["KC_F16"],
+                                0x6C => &["KC_F17"],
+                                0x6D => &["KC_F18"],
+                                0x6E => &["KC_F19"],
+                                0x6F => &["KC_F20"],
+                                0x70 => &["KC_F21"],
+                                0x71 => &["KC_F22"],
+                                0x72 => &["KC_F23"],
+                                0x73 => &["KC_F24"],
+                                _ => &[],
+                            },
+                            _ => &[],
+                        }
                     },
-                    _ => &[],
-                }
-            },
-        )]
-    })
-}
+                ),
+                qmk_space_cadet_group().clone(),
+                qmk_auto_shift_group().clone(),
+                qmk_combo_group().clone(),
+            ]
+        })
+    }
 
 fn qmk_custom_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
@@ -387,7 +506,7 @@ fn qmk_custom_groups() -> &'static [CandidateGroup] {
     })
 }
 
-const QMK_LAYER_OPS: [(&str, LayerActivation, &[&str]); 6] = [
+const QMK_LAYER_OPS: [(&str, LayerActivation, &[&str]); 7] = [
     (
         "Momentary",
         LayerActivation::Momentary,
@@ -404,6 +523,11 @@ const QMK_LAYER_OPS: [(&str, LayerActivation, &[&str]); 6] = [
         "Set Default Layer",
         LayerActivation::Default,
         &["df", "default"],
+    ),
+    (
+        "Persistent Default Layer",
+        LayerActivation::PersistentDefault,
+        &["pdf", "persistent default", "default"],
     ),
     (
         "Tap Toggle",

@@ -7,14 +7,18 @@ pub fn get_layer_layout_key(keycode_bytes: u16) -> Option<LayoutKey> {
     // name strip and default border.
     let (behavior, tap, layer_ref, border) = match QmkKeycode::from_u16(keycode_bytes) {
         QmkKeycode::LayerOp { op, layer } => {
-            let (border, layer_ref) = match op {
-                QmkLayerOp::To | QmkLayerOp::Toggle => (BorderStyle::Solid, Some(layer)),
-                QmkLayerOp::Momentary | QmkLayerOp::TapToggle => (BorderStyle::None, Some(layer)),
-                QmkLayerOp::OneShot => (BorderStyle::Dashed, Some(layer)),
-                QmkLayerOp::Default => (BorderStyle::Solid, None),
+            let (border, layer_ref, behavior) = match op {
+                QmkLayerOp::To | QmkLayerOp::Toggle => (BorderStyle::Solid, Some(layer), None),
+                QmkLayerOp::Momentary | QmkLayerOp::TapToggle => (BorderStyle::None, Some(layer), None),
+                QmkLayerOp::OneShot => (BorderStyle::Dashed, Some(layer), None),
+                QmkLayerOp::Default => (BorderStyle::Solid, None, None),
+                QmkLayerOp::PersistentDefault => {
+                    (BorderStyle::Solid, None, Some(Label::new("PDF")))
+                }
             };
             let mut key = crate::key_presenter::layer_switch_key(layer, layer_label(layer), border);
             key.layer_ref = layer_ref;
+            key.behavior = behavior;
             return Some(key);
         }
         QmkKeycode::TapDance(n) => (

@@ -180,6 +180,9 @@ impl KeyDraft {
             | KeySpec::AltKeyRepeat
             | KeySpec::KeyLock
             | KeySpec::GraveEscape
+            | KeySpec::SpaceCadet(_)
+            | KeySpec::AutoShift(_)
+            | KeySpec::Combo(_)
             | KeySpec::Transparent
             | KeySpec::None => {
                 draft.section = EditorSection::Special;

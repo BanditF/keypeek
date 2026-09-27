@@ -12,8 +12,8 @@ pub use key_presenter::KeyPresenter;
 pub use key_spec::{
     AudioAction, AutoShiftAction, BacklightAction, BluetoothAction, ComboAction, CustomBinding,
     CustomKind, CustomParam, HidKey, KeySpec, KeymapSnapshot, LayerActivation, LayerInfo,
-    LightingAction, Modifiers, MouseAction, MouseButton, OutputTarget, PowerAction, RgbAction,
-    RgbMatrixAction, SpaceCadet,
+    LightingAction, Modifiers, MouseAction, MouseButton, OneShotAction, OutputTarget, PowerAction,
+    RgbAction, RgbMatrixAction, SpaceCadet,
 };
 pub use keyboard::KeyboardDomain;
 pub use layout::{geometry, Key, KeyboardDefinition, KeyboardLayout};

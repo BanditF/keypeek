@@ -183,6 +183,7 @@ impl KeyDraft {
             | KeySpec::SpaceCadet(_)
             | KeySpec::AutoShift(_)
             | KeySpec::Combo(_)
+            | KeySpec::OneShot(_)
             | KeySpec::Transparent
             | KeySpec::None => {
                 draft.section = EditorSection::Special;

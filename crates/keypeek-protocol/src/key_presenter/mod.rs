@@ -132,8 +132,15 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
 
         KeySpec::StickyKey { key, modifiers } => match key {
             Some(k) => {
-                let mut layout =
-                    crate::hid_labels::hid_usage_to_layout_key(k.page, k.id).unwrap_or_default();
+                let base = crate::hid_labels::hid_usage_to_layout_key(k.page, k.id);
+                let mut layout = if modifiers.is_empty() {
+                    base.unwrap_or_else(|| LayoutKey {
+                        tap: Label::new(format!("0x{:04X}", k.id)),
+                        ..Default::default()
+                    })
+                } else {
+                    mod_combo_key(k.page, k.id, *modifiers, base)
+                };
                 layout.behavior = Some(behavior_names::STICKY_KEY.label());
                 layout.kind = KeycodeKind::Modifier;
                 Some(layout)
@@ -186,6 +193,11 @@ pub fn present_standard_key(spec: &KeySpec, layer_names: &[String]) -> Option<La
         }),
 
         KeySpec::Combo(act) => Some(LayoutKey {
+            tap: act.label(),
+            ..Default::default()
+        }),
+
+        KeySpec::OneShot(act) => Some(LayoutKey {
             tap: act.label(),
             ..Default::default()
         }),

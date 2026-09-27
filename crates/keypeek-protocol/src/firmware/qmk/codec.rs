@@ -3,8 +3,8 @@
 use crate::protocols::DeviceError;
 use keypeek_core::{
     AudioAction, AutoShiftAction, BacklightAction, ComboAction, CustomBinding, CustomKind, HidKey,
-    KeySpec, LayerActivation, LightingAction, Modifiers, MouseAction, MouseButton, PowerAction,
-    RgbAction, RgbMatrixAction, SpaceCadet,
+    KeySpec, LayerActivation, LightingAction, Modifiers, MouseAction, MouseButton, OneShotAction,
+    PowerAction, RgbAction, RgbMatrixAction, SpaceCadet,
 };
 use qmk_via_api::keycodes::Keycode;
 use qmk_via_api::ranges::*;
@@ -252,6 +252,11 @@ pub fn keyspec_to_qmk(spec: &KeySpec) -> Result<u16, DeviceError> {
             ComboAction::Off => Ok(Keycode::QK_COMBO_OFF as u16),
             ComboAction::Toggle => Ok(Keycode::QK_COMBO_TOGGLE as u16),
         },
+        KeySpec::OneShot(act) => match act {
+            OneShotAction::Toggle => Ok(Keycode::QK_ONE_SHOT_TOGGLE as u16),
+            OneShotAction::On => Ok(Keycode::QK_ONE_SHOT_ON as u16),
+            OneShotAction::Off => Ok(Keycode::QK_ONE_SHOT_OFF as u16),
+        },
 
         KeySpec::Power(PowerAction::Bootloader) => Ok(Keycode::QK_BOOTLOADER as u16),
         KeySpec::Power(PowerAction::Reset) => Ok(Keycode::QK_REBOOT as u16),
@@ -412,6 +417,11 @@ fn qmk_special_keycode_to_spec(kc: Keycode) -> Option<KeySpec> {
         Keycode::QK_COMBO_ON => Some(KeySpec::Combo(ComboAction::On)),
         Keycode::QK_COMBO_OFF => Some(KeySpec::Combo(ComboAction::Off)),
         Keycode::QK_COMBO_TOGGLE => Some(KeySpec::Combo(ComboAction::Toggle)),
+
+        // One Shot Control
+        Keycode::QK_ONE_SHOT_TOGGLE => Some(KeySpec::OneShot(OneShotAction::Toggle)),
+        Keycode::QK_ONE_SHOT_ON => Some(KeySpec::OneShot(OneShotAction::On)),
+        Keycode::QK_ONE_SHOT_OFF => Some(KeySpec::OneShot(OneShotAction::Off)),
 
         Keycode::QK_GRAVE_ESCAPE => Some(KeySpec::GraveEscape),
         Keycode::QK_CAPS_WORD_TOGGLE => Some(KeySpec::CapsWord),
@@ -890,6 +900,9 @@ mod tests {
             Keycode::QK_COMBO_ON as u16,
             Keycode::QK_COMBO_OFF as u16,
             Keycode::QK_COMBO_TOGGLE as u16,
+            Keycode::QK_ONE_SHOT_TOGGLE as u16,
+            Keycode::QK_ONE_SHOT_ON as u16,
+            Keycode::QK_ONE_SHOT_OFF as u16,
             QmkLayerOp::PersistentDefault.encode(0).unwrap(),
             QmkLayerOp::PersistentDefault.encode(3).unwrap(),
             Keycode::QK_BOOTLOADER as u16,

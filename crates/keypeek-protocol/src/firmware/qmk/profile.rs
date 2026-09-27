@@ -7,8 +7,8 @@ use keypeek_core::keymap_editor::profile::{EditorProfile, SidebarSection};
 use keypeek_core::keymap_editor::{Candidate, CandidateGroup, LayerTapTarget};
 use keypeek_core::{
     AudioAction, AutoShiftAction, BacklightAction, ComboAction, CustomBinding, CustomKind,
-    KeyPresenter, KeySpec, LayerActivation, LayoutKey, MouseAction, MouseButton, PowerAction,
-    RgbAction, RgbMatrixAction, SpaceCadet,
+    KeyPresenter, KeySpec, LayerActivation, LayoutKey, Modifiers, MouseAction, MouseButton,
+    OneShotAction, PowerAction, RgbAction, RgbMatrixAction, SpaceCadet,
 };
 use qmk_via_api::keycodes::Keycode;
 
@@ -147,6 +147,8 @@ fn qmk_tap_categories() -> &'static [CandidateGroup] {
             qmk_space_cadet_group().clone(),
             qmk_auto_shift_group().clone(),
             qmk_combo_group().clone(),
+            qmk_one_shot_control_group().clone(),
+            qmk_oneshot_mod_group().clone(),
             qmk_system_and_power_group().clone(),
             qmk_international_group().clone(),
         ]
@@ -397,6 +399,120 @@ fn qmk_combo_group() -> &'static CandidateGroup {
     })
 }
 
+fn qmk_one_shot_control_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        build_qmk_group(
+            "One-Shot Control",
+            &[
+                (
+                    KeySpec::OneShot(OneShotAction::Toggle),
+                    &["QK_ONE_SHOT_TOGGLE", "OS_TOGG", "oneshot toggle", "one-shot toggle"],
+                ),
+                (
+                    KeySpec::OneShot(OneShotAction::On),
+                    &["QK_ONE_SHOT_ON", "OS_ON", "oneshot on", "one-shot on"],
+                ),
+                (
+                    KeySpec::OneShot(OneShotAction::Off),
+                    &["QK_ONE_SHOT_OFF", "OS_OFF", "oneshot off", "one-shot off"],
+                ),
+            ],
+        )
+    })
+}
+
+fn qmk_oneshot_mod_group() -> &'static CandidateGroup {
+    static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
+    GROUP.get_or_init(|| {
+        build_qmk_group(
+            "One-Shot Mod",
+            &[
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            shift: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_lsft", "one-shot shift", "oneshot shift", "osm(mod_lsft)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            ctrl: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_lctl", "one-shot ctrl", "oneshot ctrl", "osm(mod_lctl)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            alt: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_lalt", "one-shot alt", "oneshot alt", "osm(mod_lalt)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            gui: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_lgui", "one-shot gui", "oneshot gui", "osm(mod_lgui)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            right_shift: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_rsft", "one-shot rshift", "oneshot rshift", "osm(mod_rsft)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            right_ctrl: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_rctl", "one-shot rctrl", "oneshot rctrl", "osm(mod_rctl)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            right_alt: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_ralt", "one-shot ralt", "oneshot ralt", "osm(mod_ralt)"],
+                ),
+                (
+                    KeySpec::StickyKey {
+                        key: None,
+                        modifiers: Modifiers {
+                            right_gui: true,
+                            ..Default::default()
+                        },
+                    },
+                    &["osm", "osm_rgui", "one-shot rgui", "oneshot rgui", "osm(mod_rgui)"],
+                ),
+            ],
+        )
+    })
+}
+
 fn qmk_special_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
@@ -445,6 +561,7 @@ fn qmk_special_groups() -> &'static [CandidateGroup] {
                 qmk_space_cadet_group().clone(),
                 qmk_auto_shift_group().clone(),
                 qmk_combo_group().clone(),
+                qmk_one_shot_control_group().clone(),
             ]
         })
     }
@@ -515,9 +632,9 @@ const QMK_LAYER_OPS: [(&str, LayerActivation, &[&str]); 7] = [
     ("Toggle", LayerActivation::Toggle, &["tg", "toggle"]),
     ("Switch To Layer", LayerActivation::To, &["to", "switch"]),
     (
-        "Sticky Layer",
+        "One-Shot Layer",
         LayerActivation::Sticky,
-        &["sl", "sticky", "oneshot"],
+        &["osl", "one-shot layer", "oneshot layer", "sl", "sticky"],
     ),
     (
         "Set Default Layer",

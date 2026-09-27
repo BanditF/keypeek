@@ -207,7 +207,8 @@ pub fn keyspec_to_zmk(spec: &KeySpec) -> Result<Behavior, DeviceError> {
         | KeySpec::KeyLock
         | KeySpec::SpaceCadet(_)
         | KeySpec::AutoShift(_)
-        | KeySpec::Combo(_) => Err(DeviceError::Unsupported(
+        | KeySpec::Combo(_)
+        | KeySpec::OneShot(_) => Err(DeviceError::Unsupported(
             "This feature is not supported in ZMK".to_string(),
         )),
         KeySpec::GraveEscape => Ok(Behavior::GraveEscape),

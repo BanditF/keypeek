@@ -4374,9 +4374,9 @@ dependencies = [
 
 [[package]]
 name = "qmk-via-api"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076ffe03dc8323104dcf3c2587d51a7413eb9d5708dc070c00f7f3f2f0fb6e5a"
+checksum = "3b60cbfa767279f62191b2c5f67218981d18c11e0552aa92c77540a441d36ab8"
 dependencies = [
  "hidapi",
  "itertools 0.15.0",

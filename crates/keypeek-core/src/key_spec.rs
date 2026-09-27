@@ -390,6 +390,24 @@ impl ComboAction {
     }
 }
 
+/// One-shot modifier/layer control action (for example QMK `OS_TOGG`, `OS_ON`, `OS_OFF`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum OneShotAction {
+    Toggle,
+    On,
+    Off,
+}
+
+impl OneShotAction {
+    pub fn label(self) -> crate::layout_key::Label {
+        match self {
+            Self::Toggle => crate::layout_key::Label::with_short("OneShot Toggle", "1ShotTg"),
+            Self::On => crate::layout_key::Label::with_short("OneShot On", "1ShotOn"),
+            Self::Off => crate::layout_key::Label::with_short("OneShot Off", "1ShotOf"),
+        }
+    }
+}
+
 /// Firmware-independent key assignment description.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum KeySpec {
@@ -438,6 +456,7 @@ pub enum KeySpec {
     SpaceCadet(SpaceCadet),
     AutoShift(AutoShiftAction),
     Combo(ComboAction),
+    OneShot(OneShotAction),
     /// Hardware and connectivity controls
     Bluetooth(BluetoothAction),
     Output(OutputTarget),

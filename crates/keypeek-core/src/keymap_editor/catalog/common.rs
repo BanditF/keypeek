@@ -9,7 +9,7 @@ use crate::key_spec::{
     LayerActivation, LightingAction, MouseAction, MouseButton, OutputTarget, PowerAction,
     RgbAction, RgbMatrixAction,
 };
-use crate::keymap_editor::candidate::{Candidate, CandidateGroup};
+use crate::keymap_editor::candidate::{Candidate, CandidateGroup, ParameterSpec};
 
 /// Creates a candidate from a [`KeySpec`] and attaches search tokens.
 pub fn action_candidate(spec: KeySpec, names: &[&str], presenter: &dyn KeyPresenter) -> Candidate {
@@ -140,6 +140,7 @@ pub fn build_keyboard_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
     token_fn: impl Fn(u16) -> Vec<String>,
+    supported_fn: impl Fn(u16) -> bool,
 ) -> Vec<Candidate> {
     let mut candidates = Vec::new();
 
@@ -158,17 +159,17 @@ pub fn build_keyboard_candidates(
     candidates.extend(
         usages
             .into_iter()
-            .filter(|&id| is_basic_keyboard_usage(id))
+            .filter(|&id| is_basic_keyboard_usage(id) && supported_fn(id))
             .map(|id| {
                 let action = KeySpec::KeyPress {
                     key: HidKey::keyboard(id),
                     modifiers: Modifiers::default(),
                 };
-                let mut cand = Candidate::from_action(action, presenter, &[]);
+                let mut cand = Candidate::from_action(action, presenter, &[])
+                    .with_search_tokens(token_fn(id));
                 if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                     cand.key.symbol = Some(format!("0x{:02X}", id));
                 }
-                cand = cand.with_search_tokens(token_fn(id));
                 attach_friendly_keyboard_aliases(cand, id)
             }),
     );
@@ -181,20 +182,21 @@ pub fn build_international_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
     token_fn: impl Fn(u16) -> Vec<String>,
+    supported_fn: impl Fn(u16) -> bool,
 ) -> Vec<Candidate> {
     usages
         .into_iter()
-        .filter(|&id| is_international_usage(id))
+        .filter(|&id| is_international_usage(id) && supported_fn(id))
         .map(|id| {
             let action = KeySpec::KeyPress {
                 key: HidKey::keyboard(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[]);
+            let mut cand = Candidate::from_action(action, presenter, &[])
+                .with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:02X}", id));
             }
-            cand = cand.with_search_tokens(token_fn(id));
             attach_friendly_international_aliases(cand, id)
         })
         .collect()
@@ -228,20 +230,21 @@ pub fn build_media_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
     token_fn: impl Fn(u16) -> Vec<String>,
+    supported_fn: impl Fn(u16) -> bool,
 ) -> Vec<Candidate> {
     usages
         .into_iter()
-        .filter(|&id| is_audio_video_consumer_usage(id))
+        .filter(|&id| is_audio_video_consumer_usage(id) && supported_fn(id))
         .map(|id| {
             let action = KeySpec::KeyPress {
                 key: HidKey::consumer(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[]);
+            let mut cand = Candidate::from_action(action, presenter, &[])
+                .with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:04X}", id));
             }
-            cand = cand.with_search_tokens(token_fn(id));
             attach_friendly_media_aliases(cand, id)
         })
         .collect()
@@ -252,20 +255,21 @@ pub fn build_app_and_web_candidates(
     presenter: &dyn KeyPresenter,
     usages: impl IntoIterator<Item = u16>,
     token_fn: impl Fn(u16) -> Vec<String>,
+    supported_fn: impl Fn(u16) -> bool,
 ) -> Vec<Candidate> {
     usages
         .into_iter()
-        .filter(|&id| is_app_and_web_consumer_usage(id))
+        .filter(|&id| is_app_and_web_consumer_usage(id) && supported_fn(id))
         .map(|id| {
             let action = KeySpec::KeyPress {
                 key: HidKey::consumer(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[]);
+            let mut cand = Candidate::from_action(action, presenter, &[])
+                .with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:04X}", id));
             }
-            cand = cand.with_search_tokens(token_fn(id));
             attach_friendly_media_aliases(cand, id)
         })
         .collect()
@@ -276,45 +280,39 @@ pub fn build_bluetooth_group(
     presenter: &dyn KeyPresenter,
     extra_tokens_fn: impl Fn(BluetoothAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let mut actions = vec![
-        (
-            BluetoothAction::Clear,
-            &["bt clear", "bt clr", "disconnect"][..],
-        ),
-        (BluetoothAction::Next, &["bt next", "bt nxt"][..]),
-        (BluetoothAction::Prev, &["bt prev", "bt prv"][..]),
-        (
-            BluetoothAction::ClearAll,
-            &["bt clear all", "bt clr all"][..],
-        ),
+    let base_actions: &[(BluetoothAction, &[&str])] = &[
+        (BluetoothAction::Clear, &["bt clear", "bt clr", "disconnect"]),
+        (BluetoothAction::Next, &["bt next", "bt nxt"]),
+        (BluetoothAction::Prev, &["bt prev", "bt prv"]),
+        (BluetoothAction::ClearAll, &["bt clear all", "bt clr all"]),
     ];
 
-    for i in 0..=9 {
-        actions.push((BluetoothAction::Select(i), &["bt sel"][..]));
-    }
-    for i in 0..=9 {
-        actions.push((BluetoothAction::Disconnect(i), &["bt disc"][..]));
-    }
-
-    let candidates = actions
-        .into_iter()
-        .map(|(action, names)| {
-            let mut cand = action_candidate(KeySpec::Bluetooth(action), names, presenter)
-                .with_search_tokens(extra_tokens_fn(action).iter().copied());
-            match action {
-                BluetoothAction::Select(n) => {
-                    cand = cand
-                        .with_search_token(format!("bt {n}"))
-                        .with_search_token(format!("bt sel {n}"));
-                }
-                BluetoothAction::Disconnect(n) => {
-                    cand = cand.with_search_token(format!("bt disc {n}"));
-                }
-                _ => {}
-            }
-            cand
+    let mut candidates: Vec<Candidate> = base_actions
+        .iter()
+        .map(|(act, names)| {
+            action_candidate(KeySpec::Bluetooth(*act), names, presenter)
+                .with_search_tokens(extra_tokens_fn(*act).iter().copied())
         })
         .collect();
+
+    for i in 0..=9 {
+        let action = BluetoothAction::Select(i);
+        candidates.push(
+            action_candidate(KeySpec::Bluetooth(action), &["bt sel"], presenter)
+                .with_parameter(ParameterSpec::BluetoothProfile { max: 9 })
+                .with_search_tokens([format!("bt {i}"), format!("bt sel {i}")])
+                .with_search_tokens(extra_tokens_fn(action).iter().copied()),
+        );
+    }
+    for i in 0..=9 {
+        let action = BluetoothAction::Disconnect(i);
+        candidates.push(
+            action_candidate(KeySpec::Bluetooth(action), &["bt disc"], presenter)
+                .with_parameter(ParameterSpec::BluetoothProfile { max: 9 })
+                .with_search_token(format!("bt disc {i}"))
+                .with_search_tokens(extra_tokens_fn(action).iter().copied()),
+        );
+    }
 
     CandidateGroup {
         name: "Bluetooth",
@@ -424,90 +422,45 @@ pub fn build_boot_power_group(
     }
 }
 
-/// All supported backlight candidate actions.
-pub const ALL_BACKLIGHT_ACTIONS: &[BacklightAction] = &[
-    BacklightAction::Toggle,
-    BacklightAction::On,
-    BacklightAction::Off,
-    BacklightAction::Inc,
-    BacklightAction::Dec,
-    BacklightAction::Cycle,
-    BacklightAction::BreathingToggle,
-];
-
-/// Backlight candidate actions supported by ZMK (excluding breathing toggle).
-pub const ZMK_BACKLIGHT_ACTIONS: &[BacklightAction] = &[
-    BacklightAction::Toggle,
-    BacklightAction::On,
-    BacklightAction::Off,
-    BacklightAction::Inc,
-    BacklightAction::Dec,
-    BacklightAction::Cycle,
-];
-
-/// All supported RGB underglow candidate actions.
-pub const ALL_RGB_UNDERGLOW_ACTIONS: &[RgbAction] = &[
-    RgbAction::Toggle,
-    RgbAction::On,
-    RgbAction::Off,
-    RgbAction::EffectInc,
-    RgbAction::EffectDec,
-    RgbAction::HueInc,
-    RgbAction::HueDec,
-    RgbAction::SatInc,
-    RgbAction::SatDec,
-    RgbAction::BrightInc,
-    RgbAction::BrightDec,
-    RgbAction::SpeedInc,
-    RgbAction::SpeedDec,
-    RgbAction::EffectSet,
-    RgbAction::Color,
-];
-
-/// RGB underglow candidate actions supported by QMK (excluding On/Off, EffectSet, Color).
-pub const QMK_RGB_UNDERGLOW_ACTIONS: &[RgbAction] = &[
-    RgbAction::Toggle,
-    RgbAction::EffectInc,
-    RgbAction::EffectDec,
-    RgbAction::HueInc,
-    RgbAction::HueDec,
-    RgbAction::SatInc,
-    RgbAction::SatDec,
-    RgbAction::BrightInc,
-    RgbAction::BrightDec,
-    RgbAction::SpeedInc,
-    RgbAction::SpeedDec,
-];
-
 /// Builds the Backlight candidate group with optional extra firmware-specific tokens.
 pub fn build_backlight_group(
     presenter: &dyn KeyPresenter,
     actions: &[BacklightAction],
     extra_tokens_fn: impl Fn(BacklightAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let all_actions: &[(BacklightAction, &[&str])] = &[
-        (BacklightAction::Toggle, &["bl toggle", "backlight"]),
-        (BacklightAction::On, &["bl on", "backlight on"]),
-        (BacklightAction::Off, &["bl off", "backlight off"]),
-        (BacklightAction::Inc, &["bl inc", "backlight up"]),
-        (BacklightAction::Dec, &["bl dec", "backlight down"]),
-        (BacklightAction::Cycle, &["bl step", "backlight cycle"]),
+    let items: &[(BacklightAction, &[&str], Option<ParameterSpec>)] = &[
+        (BacklightAction::Toggle, &["bl toggle", "backlight"], None),
+        (BacklightAction::On, &["bl on", "backlight on"], None),
+        (BacklightAction::Off, &["bl off", "backlight off"], None),
+        (BacklightAction::Inc, &["bl inc", "backlight up"], None),
+        (BacklightAction::Dec, &["bl dec", "backlight down"], None),
+        (BacklightAction::Cycle, &["bl step", "backlight cycle"], None),
         (
             BacklightAction::BreathingToggle,
             &["bl breath", "bl breathing"],
+            None,
+        ),
+        (
+            BacklightAction::Set(0),
+            &["bl set", "backlight level", "brightness"],
+            Some(ParameterSpec::Brightness { min: 0, max: 255 }),
         ),
     ];
 
-    let candidates = all_actions
+    let candidates = items
         .iter()
-        .filter(|(action, _)| actions.contains(action))
-        .map(|(action, names)| {
-            action_candidate(
+        .filter(|(action, _, _)| actions.contains(action))
+        .map(|(action, names, param)| {
+            let mut cand = action_candidate(
                 KeySpec::Lighting(LightingAction::Backlight(*action)),
                 names,
                 presenter,
             )
-            .with_search_tokens(extra_tokens_fn(*action).iter().copied())
+            .with_search_tokens(extra_tokens_fn(*action).iter().copied());
+            if let Some(param) = *param {
+                cand = cand.with_parameter(param);
+            }
+            cand
         })
         .collect();
 
@@ -523,34 +476,46 @@ pub fn build_rgb_underglow_group(
     actions: &[RgbAction],
     extra_tokens_fn: impl Fn(RgbAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let all_actions: &[(RgbAction, &[&str])] = &[
-        (RgbAction::Toggle, &["rgb toggle", "rgb tog"]),
-        (RgbAction::On, &["rgb on", "underglow on"]),
-        (RgbAction::Off, &["rgb off", "underglow off"]),
-        (RgbAction::EffectInc, &["rgb mode", "rgb next"]),
-        (RgbAction::EffectDec, &["rgb prev"]),
-        (RgbAction::HueInc, &["rgb hue+", "hue up"]),
-        (RgbAction::HueDec, &["rgb hue-", "hue down"]),
-        (RgbAction::SatInc, &["rgb sat+", "sat up"]),
-        (RgbAction::SatDec, &["rgb sat-", "sat down"]),
-        (RgbAction::BrightInc, &["rgb val+", "bri up"]),
-        (RgbAction::BrightDec, &["rgb val-", "bri down"]),
-        (RgbAction::SpeedInc, &["rgb speed+", "spd up"]),
-        (RgbAction::SpeedDec, &["rgb speed-", "spd down"]),
-        (RgbAction::EffectSet, &["rgb effect set", "eff set"]),
-        (RgbAction::Color, &["rgb color", "color"]),
+    let items: &[(RgbAction, &[&str], Option<ParameterSpec>)] = &[
+        (RgbAction::Toggle, &["rgb toggle", "rgb tog"], None),
+        (RgbAction::On, &["rgb on", "underglow on"], None),
+        (RgbAction::Off, &["rgb off", "underglow off"], None),
+        (RgbAction::EffectInc, &["rgb mode", "rgb next"], None),
+        (RgbAction::EffectDec, &["rgb prev"], None),
+        (RgbAction::HueInc, &["rgb hue+", "hue up"], None),
+        (RgbAction::HueDec, &["rgb hue-", "hue down"], None),
+        (RgbAction::SatInc, &["rgb sat+", "sat up"], None),
+        (RgbAction::SatDec, &["rgb sat-", "sat down"], None),
+        (RgbAction::BrightInc, &["rgb val+", "bri up"], None),
+        (RgbAction::BrightDec, &["rgb val-", "bri down"], None),
+        (RgbAction::SpeedInc, &["rgb speed+", "spd up"], None),
+        (RgbAction::SpeedDec, &["rgb speed-", "spd down"], None),
+        (
+            RgbAction::EffectSet,
+            &["rgb effect set", "eff set"],
+            Some(ParameterSpec::EffectIndex),
+        ),
+        (
+            RgbAction::Color,
+            &["rgb color", "color"],
+            Some(ParameterSpec::HsbColor),
+        ),
     ];
 
-    let candidates = all_actions
+    let candidates = items
         .iter()
-        .filter(|(action, _)| actions.contains(action))
-        .map(|(action, names)| {
-            action_candidate(
+        .filter(|(action, _, _)| actions.contains(action))
+        .map(|(action, names, param)| {
+            let mut cand = action_candidate(
                 KeySpec::Lighting(LightingAction::Rgb(*action)),
                 names,
                 presenter,
             )
-            .with_search_tokens(extra_tokens_fn(*action).iter().copied())
+            .with_search_tokens(extra_tokens_fn(*action).iter().copied());
+            if let Some(param) = *param {
+                cand = cand.with_parameter(param);
+            }
+            cand
         })
         .collect();
 
@@ -568,51 +533,30 @@ pub fn build_rgb_matrix_group(
     presenter: &dyn KeyPresenter,
     extra_tokens_fn: impl Fn(RgbMatrixAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let actions = [
-        (RgbMatrixAction::On, &["rgb matrix on", "rm_on"][..]),
-        (RgbMatrixAction::Off, &["rgb matrix off", "rm_off"][..]),
-        (
-            RgbMatrixAction::Toggle,
-            &["rgb matrix toggle", "rm_togg"][..],
-        ),
-        (
-            RgbMatrixAction::ModeNext,
-            &["rgb matrix next", "rm_next"][..],
-        ),
-        (
-            RgbMatrixAction::ModePrev,
-            &["rgb matrix prev", "rm_prev"][..],
-        ),
-        (RgbMatrixAction::HueInc, &["rgb matrix hue+", "rm_hueu"][..]),
-        (RgbMatrixAction::HueDec, &["rgb matrix hue-", "rm_hued"][..]),
-        (RgbMatrixAction::SatInc, &["rgb matrix sat+", "rm_satu"][..]),
-        (RgbMatrixAction::SatDec, &["rgb matrix sat-", "rm_satd"][..]),
-        (
-            RgbMatrixAction::BrightInc,
-            &["rgb matrix val+", "rm_valu"][..],
-        ),
-        (
-            RgbMatrixAction::BrightDec,
-            &["rgb matrix val-", "rm_vald"][..],
-        ),
-        (
-            RgbMatrixAction::SpeedInc,
-            &["rgb matrix speed+", "rm_spdu"][..],
-        ),
-        (
-            RgbMatrixAction::SpeedDec,
-            &["rgb matrix speed-", "rm_spdd"][..],
-        ),
+    let actions: &[(RgbMatrixAction, &[&str])] = &[
+        (RgbMatrixAction::On, &["rgb matrix on", "rm_on"]),
+        (RgbMatrixAction::Off, &["rgb matrix off", "rm_off"]),
+        (RgbMatrixAction::Toggle, &["rgb matrix toggle", "rm_togg"]),
+        (RgbMatrixAction::ModeNext, &["rgb matrix next", "rm_next"]),
+        (RgbMatrixAction::ModePrev, &["rgb matrix prev", "rm_prev"]),
+        (RgbMatrixAction::HueInc, &["rgb matrix hue+", "rm_hueu"]),
+        (RgbMatrixAction::HueDec, &["rgb matrix hue-", "rm_hued"]),
+        (RgbMatrixAction::SatInc, &["rgb matrix sat+", "rm_satu"]),
+        (RgbMatrixAction::SatDec, &["rgb matrix sat-", "rm_satd"]),
+        (RgbMatrixAction::BrightInc, &["rgb matrix val+", "rm_valu"]),
+        (RgbMatrixAction::BrightDec, &["rgb matrix val-", "rm_vald"]),
+        (RgbMatrixAction::SpeedInc, &["rgb matrix speed+", "rm_spdu"]),
+        (RgbMatrixAction::SpeedDec, &["rgb matrix speed-", "rm_spdd"]),
     ];
     let candidates = actions
-        .into_iter()
+        .iter()
         .map(|(act, names)| {
             action_candidate(
-                KeySpec::Lighting(LightingAction::RgbMatrix(act)),
+                KeySpec::Lighting(LightingAction::RgbMatrix(*act)),
                 names,
                 presenter,
             )
-            .with_search_tokens(extra_tokens_fn(act).iter().copied())
+            .with_search_tokens(extra_tokens_fn(*act).iter().copied())
         })
         .collect();
     CandidateGroup {
@@ -626,28 +570,28 @@ pub fn build_audio_group(
     presenter: &dyn KeyPresenter,
     extra_tokens_fn: impl Fn(AudioAction) -> &'static [&'static str],
 ) -> CandidateGroup {
-    let actions = [
-        (AudioAction::On, &["audio on", "au_on"][..]),
-        (AudioAction::Off, &["audio off", "au_off"][..]),
-        (AudioAction::Toggle, &["audio toggle", "au_tog"][..]),
-        (AudioAction::ClickyToggle, &["clicky toggle", "ck_tog"][..]),
-        (AudioAction::ClickyOn, &["clicky on", "ck_on"][..]),
-        (AudioAction::ClickyOff, &["clicky off", "ck_off"][..]),
-        (AudioAction::ClickyUp, &["clicky up", "ck_up"][..]),
-        (AudioAction::ClickyDown, &["clicky down", "ck_down"][..]),
-        (AudioAction::ClickyReset, &["clicky reset", "ck_rst"][..]),
-        (AudioAction::MusicOn, &["music on", "mu_on"][..]),
-        (AudioAction::MusicOff, &["music off", "mu_off"][..]),
-        (AudioAction::MusicToggle, &["music toggle", "mu_tog"][..]),
-        (AudioAction::MusicModeNext, &["music mode", "mu_mod"][..]),
-        (AudioAction::VoiceNext, &["audio voice+", "voice next"][..]),
-        (AudioAction::VoicePrev, &["audio voice-", "voice prev"][..]),
+    let actions: &[(AudioAction, &[&str])] = &[
+        (AudioAction::On, &["audio on", "au_on"]),
+        (AudioAction::Off, &["audio off", "au_off"]),
+        (AudioAction::Toggle, &["audio toggle", "au_tog"]),
+        (AudioAction::ClickyToggle, &["clicky toggle", "ck_tog"]),
+        (AudioAction::ClickyOn, &["clicky on", "ck_on"]),
+        (AudioAction::ClickyOff, &["clicky off", "ck_off"]),
+        (AudioAction::ClickyUp, &["clicky up", "ck_up"]),
+        (AudioAction::ClickyDown, &["clicky down", "ck_down"]),
+        (AudioAction::ClickyReset, &["clicky reset", "ck_rst"]),
+        (AudioAction::MusicOn, &["music on", "mu_on"]),
+        (AudioAction::MusicOff, &["music off", "mu_off"]),
+        (AudioAction::MusicToggle, &["music toggle", "mu_tog"]),
+        (AudioAction::MusicModeNext, &["music mode", "mu_mod"]),
+        (AudioAction::VoiceNext, &["audio voice+", "voice next"]),
+        (AudioAction::VoicePrev, &["audio voice-", "voice prev"]),
     ];
     let candidates = actions
-        .into_iter()
+        .iter()
         .map(|(act, names)| {
-            action_candidate(KeySpec::Audio(act), names, presenter)
-                .with_search_tokens(extra_tokens_fn(act).iter().copied())
+            action_candidate(KeySpec::Audio(*act), names, presenter)
+                .with_search_tokens(extra_tokens_fn(*act).iter().copied())
         })
         .collect();
     CandidateGroup {
@@ -964,8 +908,7 @@ pub fn build_custom_groups(presenter: &dyn KeyPresenter) -> Vec<CandidateGroup> 
                         param2: None,
                     });
                     Candidate::from_action(spec, presenter, &[])
-                        .with_search_token(title)
-                        .with_search_token(format!("{title} {i}"))
+                        .with_search_tokens([title, &format!("{title} {i}")])
                 })
                 .collect();
 
@@ -1001,7 +944,10 @@ pub fn build_layer_groups(
                         presenter,
                         layer_names,
                     )
-                    .with_search_tokens(*search_tokens)
+                    .with_parameter(ParameterSpec::Layer {
+                        max: count.saturating_sub(1) as u8,
+                    })
+                    .with_search_tokens(search_tokens.iter().copied())
                     .with_search_tokens(extra_tokens_fn(*activation).iter().copied())
                     .with_search_token(format!("l{layer}"))
                 })
@@ -1023,6 +969,9 @@ pub fn build_layer_groups(
                 presenter,
                 layer_names,
             )
+            .with_parameter(ParameterSpec::Layer {
+                max: count.saturating_sub(1) as u8,
+            })
             .with_search_tokens(["lt", "layer tap"])
             .with_search_token(format!("lt{layer}"))
             .with_search_token(format!("l{layer}"))
@@ -1040,6 +989,7 @@ pub fn build_layer_groups(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keymap_editor::LayerTapTarget;
 
     struct TestPresenter;
     impl KeyPresenter for TestPresenter {
@@ -1054,9 +1004,12 @@ mod tests {
 
     #[test]
     fn common_keyboard_candidates_produce_expected_specs() {
-        let cands = build_keyboard_candidates(&TestPresenter, vec![0x04, 0x28], |_| {
-            vec!["token".to_string()]
-        });
+        let cands = build_keyboard_candidates(
+            &TestPresenter,
+            vec![0x04, 0x28],
+            |_| vec!["token".to_string()],
+            |_| true,
+        );
         assert_eq!(cands.len(), 4);
         assert_eq!(cands[0].binding, KeySpec::Transparent);
         assert_eq!(cands[1].binding, KeySpec::None);
@@ -1073,6 +1026,22 @@ mod tests {
     }
 
     #[test]
+    fn hid_candidates_honor_profile_support_predicate() {
+        let cands = build_keyboard_candidates(
+            &TestPresenter,
+            vec![0x04, 0x28],
+            |_| vec![],
+            |id| id == 0x28,
+        );
+
+        assert_eq!(cands.len(), 3);
+        assert!(matches!(
+            cands[2].binding,
+            KeySpec::KeyPress { key, .. } if key.id == 0x28
+        ));
+    }
+
+    #[test]
     fn common_bluetooth_candidates_produce_bluetooth_specs() {
         let group = build_bluetooth_group(&TestPresenter, |_| &["test_extra"]);
         assert_eq!(group.name, "Bluetooth");
@@ -1081,11 +1050,39 @@ mod tests {
             .iter()
             .any(|c| matches!(c.binding, KeySpec::Bluetooth(BluetoothAction::Clear))));
         assert!(group.candidates[0].matches_query("test_extra"));
+        assert!(group
+            .candidates
+            .iter()
+            .filter(|candidate| matches!(
+                candidate.binding,
+                KeySpec::Bluetooth(BluetoothAction::Select(_) | BluetoothAction::Disconnect(_))
+            ))
+            .all(
+                |candidate| candidate.parameter == Some(ParameterSpec::BluetoothProfile { max: 9 })
+            ));
+    }
+
+    #[test]
+    fn layer_candidates_declare_available_layer_range() {
+        let groups = build_layer_groups(
+            &TestPresenter,
+            3,
+            &[],
+            LayerTapTarget::default(),
+            &[("Momentary", LayerActivation::Momentary, &[])],
+            |_| &[],
+        );
+
+        assert!(groups
+            .iter()
+            .flat_map(|group| &group.candidates)
+            .all(|candidate| { candidate.parameter == Some(ParameterSpec::Layer { max: 2 }) }));
     }
 
     #[test]
     fn common_international_candidates_produce_expected_specs() {
-        let cands = build_international_candidates(&TestPresenter, vec![0x90, 0x88], |_| vec![]);
+        let cands =
+            build_international_candidates(&TestPresenter, vec![0x90, 0x88], |_| vec![], |_| true);
         assert_eq!(cands.len(), 2);
         assert_eq!(
             cands[0].binding,
@@ -1096,5 +1093,70 @@ mod tests {
         );
         assert!(cands[0].matches_query("hangul"));
         assert!(cands[1].matches_query("kana"));
+    }
+
+    #[test]
+    fn migrated_lighting_builders_preserve_filtering_and_tokens() {
+        let backlight = build_backlight_group(
+            &TestPresenter,
+            &[BacklightAction::Toggle, BacklightAction::Cycle],
+            |_| &["firmware backlight"],
+        );
+        assert_eq!(backlight.candidates.len(), 2);
+        assert!(backlight.candidates[0].matches_query("bl toggle"));
+        assert!(backlight.candidates[1].matches_query("firmware backlight"));
+        assert!(backlight.candidates.iter().all(|candidate| matches!(
+            candidate.binding,
+            KeySpec::Lighting(LightingAction::Backlight(_))
+        )));
+
+        let zmk_backlight = build_backlight_group(
+            &TestPresenter,
+            &[
+                BacklightAction::Toggle,
+                BacklightAction::On,
+                BacklightAction::Off,
+                BacklightAction::Inc,
+                BacklightAction::Dec,
+                BacklightAction::Cycle,
+                BacklightAction::Set(0),
+            ],
+            |_| &[],
+        );
+        let set_candidate = zmk_backlight
+            .candidates
+            .iter()
+            .find(|candidate| {
+                matches!(
+                    candidate.binding,
+                    KeySpec::Lighting(LightingAction::Backlight(BacklightAction::Set(0)))
+                )
+            })
+            .expect("ZMK backlight should expose BL_SET");
+        assert_eq!(
+            set_candidate.parameter,
+            Some(ParameterSpec::Brightness { min: 0, max: 255 })
+        );
+
+        let rgb = build_rgb_underglow_group(
+            &TestPresenter,
+            &[RgbAction::Toggle, RgbAction::Color],
+            |_| &["firmware rgb"],
+        );
+        assert_eq!(rgb.candidates.len(), 2);
+        assert!(rgb
+            .candidates
+            .iter()
+            .all(|candidate| candidate.matches_query("firmware rgb")));
+
+        let rgb_matrix = build_rgb_matrix_group(&TestPresenter, |_| &["firmware matrix"]);
+        assert_eq!(rgb_matrix.candidates.len(), 13);
+        assert!(rgb_matrix.candidates[0].matches_query("rm_on"));
+        assert!(rgb_matrix.candidates[0].matches_query("firmware matrix"));
+
+        let audio = build_audio_group(&TestPresenter, |_| &["firmware audio"]);
+        assert_eq!(audio.candidates.len(), 15);
+        assert!(audio.candidates[0].matches_query("au_on"));
+        assert!(audio.candidates[0].matches_query("firmware audio"));
     }
 }

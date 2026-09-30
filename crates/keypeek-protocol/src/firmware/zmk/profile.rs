@@ -4,54 +4,107 @@ use crate::firmware::zmk::ZmkKeyPresenter;
 use keypeek_core::keymap_editor::catalog::common;
 use keypeek_core::keymap_editor::draft::EditorSection;
 use keypeek_core::keymap_editor::profile::{EditorProfile, SidebarSection};
-use keypeek_core::keymap_editor::{CandidateGroup, LayerTapTarget};
+use keypeek_core::keymap_editor::{CandidateGroup, FeatureManifest, LayerTapTarget};
 use keypeek_core::{
-    BacklightAction, BluetoothAction, KeyPresenter, KeySpec, LayerActivation, LayoutKey,
-    MouseAction, MouseButton, OutputTarget, PowerAction, RgbAction,
+    BacklightAction, BluetoothAction, HidKey, KeyPresenter, KeySpec, LayerActivation, LayoutKey,
+    Modifiers, MouseAction, MouseButton, OutputTarget, PowerAction, RgbAction,
 };
 
-const ZMK_SIDEBAR_SECTIONS: [SidebarSection<EditorSection>; 5] = [
+const ZMK_SIDEBAR_SECTIONS: [SidebarSection<FeatureManifest>; 5] = [
     SidebarSection {
         title: "Keys",
         items: &[
-            EditorSection::Keyboard,
-            EditorSection::KeyToggle,
-            EditorSection::Special,
+            FeatureManifest::supported(EditorSection::Keyboard),
+            FeatureManifest::supported(EditorSection::Media),
+            FeatureManifest::supported(EditorSection::KeyToggle),
+            FeatureManifest::supported(EditorSection::Special),
         ],
     },
     SidebarSection {
         title: "Layers & Mods",
         items: &[
-            EditorSection::Layers,
-            EditorSection::Combo,
-            EditorSection::OneShot,
-            EditorSection::ModTap,
+            FeatureManifest::supported(EditorSection::Layers),
+            FeatureManifest::supported(EditorSection::Combo),
+            FeatureManifest::supported(EditorSection::OneShot),
+            FeatureManifest::supported(EditorSection::ModTap),
         ],
     },
     SidebarSection {
         title: "Wireless",
-        items: &[EditorSection::Bluetooth, EditorSection::Output],
+        items: &[
+            FeatureManifest::supported(EditorSection::Bluetooth),
+            FeatureManifest::supported(EditorSection::Output),
+        ],
     },
     SidebarSection {
         title: "Lighting",
-        items: &[EditorSection::Backlight, EditorSection::Rgb],
+        items: &[
+            FeatureManifest::conditional(EditorSection::Backlight),
+            FeatureManifest::conditional(EditorSection::Rgb),
+        ],
     },
     SidebarSection {
         title: "Other",
-        items: &[EditorSection::Mouse, EditorSection::Custom],
+        items: &[
+            FeatureManifest::supported(EditorSection::System),
+            FeatureManifest::conditional(EditorSection::Mouse),
+            FeatureManifest::conditional(EditorSection::Custom),
+        ],
     },
 ];
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ZmkEditorProfile;
 
+const ZMK_BACKLIGHT_ACTIONS: &[BacklightAction] = &[
+    BacklightAction::Toggle,
+    BacklightAction::On,
+    BacklightAction::Off,
+    BacklightAction::Inc,
+    BacklightAction::Dec,
+    BacklightAction::Cycle,
+    BacklightAction::Set(0),
+];
+
+const ZMK_RGB_UNDERGLOW_ACTIONS: &[RgbAction] = &[
+    RgbAction::Toggle,
+    RgbAction::On,
+    RgbAction::Off,
+    RgbAction::EffectInc,
+    RgbAction::EffectDec,
+    RgbAction::HueInc,
+    RgbAction::HueDec,
+    RgbAction::SatInc,
+    RgbAction::SatDec,
+    RgbAction::BrightInc,
+    RgbAction::BrightDec,
+    RgbAction::SpeedInc,
+    RgbAction::SpeedDec,
+];
+
+fn zmk_supports_hid(page: u16, id: u16) -> bool {
+    let key = match page {
+        0x07 => HidKey::keyboard(id),
+        0x0C => HidKey::consumer(id),
+        _ => return false,
+    };
+    super::codec::keyspec_to_zmk(&KeySpec::KeyPress {
+        key,
+        modifiers: Modifiers::default(),
+    })
+    .is_ok()
+}
+
 fn zmk_keyboard_group() -> &'static CandidateGroup {
     static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
     GROUP.get_or_init(|| {
         let usages = super::codec::zmk_all_keyboard_usages();
-        let candidates = common::build_keyboard_candidates(&ZmkKeyPresenter, usages, |id| {
-            super::codec::zmk_search_tokens_for_hid(0x07, id)
-        });
+        let candidates = common::build_keyboard_candidates(
+            &ZmkKeyPresenter,
+            usages,
+            |id| super::codec::zmk_search_tokens_for_hid(0x07, id),
+            |id| zmk_supports_hid(0x07, id),
+        );
         CandidateGroup {
             name: "Basic",
             candidates,
@@ -63,9 +116,12 @@ fn zmk_media_group() -> &'static CandidateGroup {
     static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
     GROUP.get_or_init(|| {
         let usages = super::codec::zmk_all_consumer_usages();
-        let candidates = common::build_media_candidates(&ZmkKeyPresenter, usages, |id| {
-            super::codec::zmk_search_tokens_for_hid(0x0C, id)
-        });
+        let candidates = common::build_media_candidates(
+            &ZmkKeyPresenter,
+            usages,
+            |id| super::codec::zmk_search_tokens_for_hid(0x0C, id),
+            |id| zmk_supports_hid(0x0C, id),
+        );
         CandidateGroup {
             name: "Media",
             candidates,
@@ -77,9 +133,12 @@ fn zmk_apps_and_web_group() -> &'static CandidateGroup {
     static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
     GROUP.get_or_init(|| {
         let usages = super::codec::zmk_all_consumer_usages();
-        let candidates = common::build_app_and_web_candidates(&ZmkKeyPresenter, usages, |id| {
-            super::codec::zmk_search_tokens_for_hid(0x0C, id)
-        });
+        let candidates = common::build_app_and_web_candidates(
+            &ZmkKeyPresenter,
+            usages,
+            |id| super::codec::zmk_search_tokens_for_hid(0x0C, id),
+            |id| zmk_supports_hid(0x0C, id),
+        );
         CandidateGroup {
             name: "Apps & Web",
             candidates,
@@ -91,9 +150,12 @@ fn zmk_international_group() -> &'static CandidateGroup {
     static GROUP: OnceLock<CandidateGroup> = OnceLock::new();
     GROUP.get_or_init(|| {
         let usages = super::codec::zmk_all_keyboard_usages();
-        let candidates = common::build_international_candidates(&ZmkKeyPresenter, usages, |id| {
-            super::codec::zmk_search_tokens_for_hid(0x07, id)
-        });
+        let candidates = common::build_international_candidates(
+            &ZmkKeyPresenter,
+            usages,
+            |id| super::codec::zmk_search_tokens_for_hid(0x07, id),
+            |id| zmk_supports_hid(0x07, id),
+        );
         CandidateGroup {
             name: "International",
             candidates,
@@ -143,21 +205,22 @@ fn zmk_tap_categories() -> &'static [CandidateGroup] {
     CATEGORIES.get_or_init(|| {
         vec![
             zmk_keyboard_group().clone(),
-            zmk_media_group().clone(),
-            zmk_apps_and_web_group().clone(),
             zmk_special_groups()[0].clone(),
-            zmk_system_and_power_group().clone(),
             zmk_international_group().clone(),
         ]
     })
 }
 
+fn zmk_media_groups() -> &'static [CandidateGroup] {
+    static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
+    GROUPS.get_or_init(|| vec![zmk_media_group().clone(), zmk_apps_and_web_group().clone()])
+}
+
 fn zmk_bluetooth_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
-        vec![common::build_bluetooth_group(
-            &ZmkKeyPresenter,
-            |act| -> &'static [&'static str] {
+        let mut group =
+            common::build_bluetooth_group(&ZmkKeyPresenter, |act| -> &'static [&'static str] {
                 match act {
                     BluetoothAction::Clear => &["&bt BT_CLR", "bt_clr"],
                     BluetoothAction::Next => &["&bt BT_NXT", "bt_nxt"],
@@ -167,8 +230,27 @@ fn zmk_bluetooth_groups() -> &'static [CandidateGroup] {
                     BluetoothAction::Disconnect(_) => &["&bt BT_DISC", "bt_disc"],
                     _ => &[],
                 }
-            },
-        )]
+            });
+        group.candidates = group
+            .candidates
+            .into_iter()
+            .map(|candidate| {
+                let token = match &candidate.binding {
+                    KeySpec::Bluetooth(BluetoothAction::Select(n)) => {
+                        Some(format!("&bt BT_SEL {n}"))
+                    }
+                    KeySpec::Bluetooth(BluetoothAction::Disconnect(n)) => {
+                        Some(format!("&bt BT_DISC {n}"))
+                    }
+                    _ => None,
+                };
+                match token {
+                    Some(token) => candidate.with_search_token(token),
+                    None => candidate,
+                }
+            })
+            .collect();
+        vec![group]
     })
 }
 
@@ -195,7 +277,7 @@ fn zmk_backlight_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_backlight_group(
             &ZmkKeyPresenter,
-            common::ZMK_BACKLIGHT_ACTIONS,
+            ZMK_BACKLIGHT_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     BacklightAction::Toggle => &["&bl BL_TOG"],
@@ -216,7 +298,7 @@ fn zmk_rgb_groups() -> &'static [CandidateGroup] {
     GROUPS.get_or_init(|| {
         vec![common::build_rgb_underglow_group(
             &ZmkKeyPresenter,
-            common::ALL_RGB_UNDERGLOW_ACTIONS,
+            ZMK_RGB_UNDERGLOW_ACTIONS,
             |act| -> &'static [&'static str] {
                 match act {
                     RgbAction::Toggle => &["&rgb_ug RGB_TOG"],
@@ -266,9 +348,8 @@ fn zmk_mouse_groups() -> &'static [CandidateGroup] {
 fn zmk_special_groups() -> &'static [CandidateGroup] {
     static GROUPS: OnceLock<Vec<CandidateGroup>> = OnceLock::new();
     GROUPS.get_or_init(|| {
-        vec![common::build_special_group(
-            &ZmkKeyPresenter,
-            |spec| -> &'static [&'static str] {
+        let mut group =
+            common::build_special_group(&ZmkKeyPresenter, |spec| -> &'static [&'static str] {
                 match spec {
                     KeySpec::Transparent => &["&trans"],
                     KeySpec::None => &["&none"],
@@ -303,8 +384,11 @@ fn zmk_special_groups() -> &'static [CandidateGroup] {
                     },
                     _ => &[],
                 }
-            },
-        )]
+            });
+        group.candidates.retain(|candidate| {
+            !matches!(candidate.binding, KeySpec::AltKeyRepeat | KeySpec::KeyLock)
+        });
+        vec![group]
     })
 }
 
@@ -343,8 +427,15 @@ impl EditorProfile for ZmkEditorProfile {
         "ZMK"
     }
 
-    fn sidebar_sections(&self) -> &[SidebarSection<EditorSection>] {
+    fn sidebar_sections(&self) -> &[SidebarSection<FeatureManifest>] {
         &ZMK_SIDEBAR_SECTIONS
+    }
+
+    fn section_label(&self, section: EditorSection) -> &'static str {
+        match section {
+            EditorSection::System => "System & Power",
+            _ => section.label(),
+        }
     }
 
     fn tap_categories(&self) -> &'static [CandidateGroup] {
@@ -358,7 +449,9 @@ impl EditorProfile for ZmkEditorProfile {
             | EditorSection::Combo
             | EditorSection::ModTap
             | EditorSection::OneShot => zmk_tap_categories(),
+            EditorSection::Media => zmk_media_groups(),
             EditorSection::Special => zmk_special_groups(),
+            EditorSection::System => std::slice::from_ref(zmk_system_and_power_group()),
             EditorSection::Bluetooth => zmk_bluetooth_groups(),
             EditorSection::Output => zmk_output_groups(),
             EditorSection::Backlight => zmk_backlight_groups(),
@@ -375,7 +468,7 @@ impl EditorProfile for ZmkEditorProfile {
         layer_names: &[String],
         tap: LayerTapTarget,
     ) -> Vec<CandidateGroup> {
-        common::build_layer_groups(
+        let mut groups = common::build_layer_groups(
             &ZmkKeyPresenter,
             layer_count,
             layer_names,
@@ -388,7 +481,26 @@ impl EditorProfile for ZmkEditorProfile {
                 LayerActivation::Sticky => &["&sl"][..],
                 _ => &[][..],
             },
-        )
+        );
+
+        for group in &mut groups {
+            for candidate in &mut group.candidates {
+                let token = match &candidate.binding {
+                    KeySpec::Layer { layer, activation } => match activation {
+                        LayerActivation::Momentary => format!("&mo {layer}"),
+                        LayerActivation::Toggle => format!("&tog {layer}"),
+                        LayerActivation::To => format!("&to {layer}"),
+                        LayerActivation::Sticky => format!("&sl {layer}"),
+                        _ => continue,
+                    },
+                    KeySpec::LayerTap { layer, .. } => format!("&lt {layer}"),
+                    _ => continue,
+                };
+                *candidate = candidate.clone().with_search_token(token);
+            }
+        }
+
+        groups
     }
 
     fn supports_tap_modifiers(&self) -> bool {
@@ -401,5 +513,188 @@ impl EditorProfile for ZmkEditorProfile {
 
     fn supports_backlight_level(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_catalog_candidates_encode() {
+        let profile = ZmkEditorProfile;
+        let mut failures = Vec::new();
+        let layer_names = Vec::new();
+        let mut groups: Vec<CandidateGroup> = profile
+            .tap_categories()
+            .iter()
+            .chain(
+                profile
+                    .sidebar_sections()
+                    .iter()
+                    .flat_map(|section| section.items)
+                    .map(|item| item.section)
+                    .flat_map(|section| profile.section_groups(section)),
+            )
+            .cloned()
+            .collect();
+        groups.extend(profile.layer_groups(2, &layer_names, LayerTapTarget::default()));
+
+        for group in &groups {
+            for candidate in &group.candidates {
+                if !matches!(candidate.binding, KeySpec::Custom(_)) {
+                    match super::super::codec::keyspec_to_zmk(&candidate.binding) {
+                        Ok(behavior)
+                            if super::super::codec::zmk_to_keyspec(&behavior)
+                                == candidate.binding => {}
+                        _ => failures.push(format!("{}: {:?}", group.name, candidate.binding)),
+                    }
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "catalog candidates failed to encode: {failures:?}"
+        );
+    }
+
+    #[test]
+    fn catalog_keeps_official_and_friendly_search_aliases() {
+        let profile = ZmkEditorProfile;
+        let queries = [
+            "&bootloader",
+            "&bt BT_SEL 1",
+            "&bt BT_DISC 1",
+            "&kp LCAPS",
+            "volume",
+            "enter",
+        ];
+
+        for query in queries {
+            assert!(
+                profile
+                    .tap_categories()
+                    .iter()
+                    .chain(
+                        profile
+                            .sidebar_sections()
+                            .iter()
+                            .flat_map(|section| section.items)
+                            .map(|item| item.section)
+                            .flat_map(|section| profile.section_groups(section)),
+                    )
+                    .flat_map(|group| &group.candidates)
+                    .any(|candidate| candidate.matches_query(query)),
+                "no ZMK candidate matched {query:?}"
+            );
+        }
+
+        let layer_groups = profile.layer_groups(2, &[], LayerTapTarget::default());
+        assert!(layer_groups
+            .iter()
+            .flat_map(|group| &group.candidates)
+            .any(|candidate| candidate.matches_query("&mo 1")));
+        assert!(layer_groups
+            .iter()
+            .flat_map(|group| &group.candidates)
+            .any(|candidate| candidate.matches_query("&lt 1")));
+    }
+
+    #[test]
+    fn catalog_does_not_expose_qmk_only_features() {
+        let profile = ZmkEditorProfile;
+
+        assert!(profile.section_groups(EditorSection::Audio).is_empty());
+        assert!(profile.section_groups(EditorSection::RgbMatrix).is_empty());
+        assert!(profile
+            .section_groups(EditorSection::Mouse)
+            .iter()
+            .flat_map(|group| &group.candidates)
+            .all(|candidate| !matches!(
+                candidate.binding,
+                KeySpec::Mouse(MouseAction::Acceleration(_))
+            )));
+        let layer_groups = profile.layer_groups(2, &[], LayerTapTarget::default());
+        assert!(layer_groups.iter().flat_map(|group| &group.candidates).all(
+            |candidate| !matches!(
+                candidate.binding,
+                KeySpec::Layer {
+                    activation: LayerActivation::Default
+                        | LayerActivation::PersistentDefault
+                        | LayerActivation::TapToggle,
+                    ..
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn feature_manifest_matches_zmk_sidebar_and_catalog() {
+        let profile = ZmkEditorProfile;
+        let mut seen = std::collections::HashSet::new();
+
+        for feature in profile.feature_manifest() {
+            assert!(
+                seen.insert(feature.section),
+                "duplicate section in sidebar: {:?}",
+                feature.section
+            );
+            assert!(
+                !profile.section_groups(feature.section).is_empty()
+                    || matches!(
+                        feature.section,
+                        EditorSection::Layers
+                            | EditorSection::Combo
+                            | EditorSection::OneShot
+                            | EditorSection::ModTap
+                            | EditorSection::KeyToggle
+                    ),
+                "feature {:?} has no catalog groups or dedicated page",
+                feature.section
+            );
+        }
+    }
+
+    #[test]
+    fn parameter_metadata_matches_zmk_bindings() {
+        let profile = ZmkEditorProfile;
+        let layer_names = Vec::new();
+        let mut groups: Vec<CandidateGroup> = profile
+            .tap_categories()
+            .iter()
+            .chain(
+                profile
+                    .sidebar_sections()
+                    .iter()
+                    .flat_map(|section| section.items)
+                    .map(|item| item.section)
+                    .flat_map(|section| profile.section_groups(section)),
+            )
+            .cloned()
+            .collect();
+        groups.extend(profile.layer_groups(2, &layer_names, LayerTapTarget::default()));
+
+        for candidate in groups.iter().flat_map(|group| &group.candidates) {
+            if let Some(parameter) = candidate.parameter {
+                assert!(matches!(
+                    (parameter, &candidate.binding),
+                    (
+                        keypeek_core::keymap_editor::ParameterSpec::Brightness { .. },
+                        KeySpec::Lighting(keypeek_core::LightingAction::Backlight(
+                            BacklightAction::Set(_)
+                        ))
+                    ) | (
+                        keypeek_core::keymap_editor::ParameterSpec::BluetoothProfile { .. },
+                        KeySpec::Bluetooth(
+                            BluetoothAction::Select(_) | BluetoothAction::Disconnect(_)
+                        )
+                    ) | (
+                        keypeek_core::keymap_editor::ParameterSpec::Layer { .. },
+                        KeySpec::Layer { .. } | KeySpec::LayerTap { .. }
+                    )
+                ));
+            }
+        }
     }
 }

@@ -13,6 +13,8 @@ pub struct Candidate {
     pub key: LayoutKey,
     /// Indicates a transparent key slot.
     pub transparent: bool,
+    /// Optional parameter information for bindings that need editor input.
+    pub parameter: Option<ParameterSpec>,
     /// Precomputed lowercase search tokens.
     search_haystack: String,
 }
@@ -24,8 +26,15 @@ impl Candidate {
             binding,
             key,
             transparent: false,
+            parameter: None,
             search_haystack,
         }
+    }
+
+    /// Sets the parameter metadata for this candidate.
+    pub fn with_parameter(mut self, parameter: ParameterSpec) -> Self {
+        self.parameter = Some(parameter);
+        self
     }
 
     /// Sets whether this candidate represents a transparent key slot.
@@ -63,6 +72,11 @@ impl Candidate {
         self.search_haystack.contains(lowercase_query)
     }
 
+    /// Checks whether the candidate's parameter accepts a numeric value, if specified.
+    pub fn accepts_parameter_value(&self, value: u16) -> bool {
+        self.parameter.map(|p| p.accepts(value)).unwrap_or(true)
+    }
+
     /// Creates a candidate for any key action, providing consistent display
     /// labels for transparent and none slots across protocols.
     pub fn from_action(
@@ -91,6 +105,27 @@ impl Candidate {
             )
             .with_transparent(true),
             Some(key) => Self::new(binding, key),
+        }
+    }
+}
+
+/// Describes parameters required to complete a candidate binding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParameterSpec {
+    Brightness { min: u8, max: u8 },
+    HsbColor,
+    EffectIndex,
+    Layer { max: u8 },
+    BluetoothProfile { max: u8 },
+}
+
+impl ParameterSpec {
+    /// Returns whether a numeric parameter value is valid for this candidate.
+    pub fn accepts(self, value: u16) -> bool {
+        match self {
+            Self::Brightness { min, max } => u16::from(min) <= value && value <= u16::from(max),
+            Self::Layer { max } | Self::BluetoothProfile { max } => value <= u16::from(max),
+            Self::HsbColor | Self::EffectIndex => true,
         }
     }
 }
@@ -178,5 +213,50 @@ pub struct CandidateGroup {
 impl CandidateGroup {
     pub fn new(name: &'static str, candidates: Vec<Candidate>) -> Self {
         Self { name, candidates }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestPresenter;
+
+    impl KeyPresenter for TestPresenter {
+        fn present_key(&self, _spec: &KeySpec, _layer_names: &[String]) -> Option<LayoutKey> {
+            Some(LayoutKey::default())
+        }
+    }
+
+    #[test]
+    fn candidate_builds_with_parameter_and_search_tokens() {
+        let candidate = Candidate::from_action(KeySpec::None, &TestPresenter, &[])
+            .with_search_tokens(["none", "noop"])
+            .with_parameter(ParameterSpec::Brightness { min: 0, max: 100 });
+
+        assert_eq!(
+            candidate.parameter,
+            Some(ParameterSpec::Brightness { min: 0, max: 100 })
+        );
+        assert!(candidate.matches_query("none"));
+        assert!(candidate.matches_query("noop"));
+        assert!(candidate.accepts_parameter_value(50));
+        assert!(!candidate.accepts_parameter_value(101));
+    }
+
+    #[test]
+    fn parameter_specs_validate_numeric_boundaries() {
+        let brightness = ParameterSpec::Brightness { min: 0, max: 255 };
+        assert!(brightness.accepts(0));
+        assert!(brightness.accepts(255));
+        assert!(!brightness.accepts(256));
+
+        let layer = ParameterSpec::Layer { max: 2 };
+        assert!(layer.accepts(2));
+        assert!(!layer.accepts(3));
+
+        let bluetooth = ParameterSpec::BluetoothProfile { max: 9 };
+        assert!(bluetooth.accepts(9));
+        assert!(!bluetooth.accepts(10));
     }
 }

@@ -3,6 +3,6 @@ pub mod catalog;
 pub mod draft;
 pub mod profile;
 
-pub use candidate::{Candidate, CandidateGroup, SelectedKey};
+pub use candidate::{Candidate, CandidateGroup, ParameterSpec, SelectedKey};
 pub use draft::{EditorSection, KeyDraft};
-pub use profile::{EditorProfile, LayerTapTarget, SidebarSection};
+pub use profile::{EditorProfile, FeatureManifest, LayerTapTarget, SidebarSection, SupportLevel};

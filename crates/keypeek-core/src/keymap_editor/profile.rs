@@ -14,6 +14,44 @@ pub struct SidebarSection<T: 'static> {
     pub items: &'static [T],
 }
 
+/// Support declaration for one firmware-neutral editor feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupportLevel {
+    Supported,
+    Conditional,
+    Unsupported,
+}
+
+/// Firmware profile feature metadata used by sidebar and catalog checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FeatureManifest {
+    pub section: EditorSection,
+    pub support: SupportLevel,
+}
+
+impl FeatureManifest {
+    pub const fn supported(section: EditorSection) -> Self {
+        Self {
+            section,
+            support: SupportLevel::Supported,
+        }
+    }
+
+    pub const fn conditional(section: EditorSection) -> Self {
+        Self {
+            section,
+            support: SupportLevel::Conditional,
+        }
+    }
+
+    pub const fn unsupported(section: EditorSection) -> Self {
+        Self {
+            section,
+            support: SupportLevel::Unsupported,
+        }
+    }
+}
+
 /// Target tap key and modifier configuration for Layer-Tap candidates.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LayerTapTarget {
@@ -31,7 +69,15 @@ pub trait EditorProfile: KeyPresenter + Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Sidebar grouping and sections for this profile.
-    fn sidebar_sections(&self) -> &[SidebarSection<EditorSection>];
+    fn sidebar_sections(&self) -> &[SidebarSection<FeatureManifest>];
+
+    /// Firmware-neutral feature support declarations derived from the sidebar manifest.
+    fn feature_manifest(&self) -> Vec<FeatureManifest> {
+        self.sidebar_sections()
+            .iter()
+            .flat_map(|group| group.items.iter().copied())
+            .collect()
+    }
 
     /// Firmware label for a section.
     fn section_label(&self, section: EditorSection) -> &'static str {
@@ -44,14 +90,21 @@ pub trait EditorProfile: KeyPresenter + Send + Sync {
         section: EditorSection,
         is_action_supported: &dyn Fn(&KeySpec) -> bool,
     ) -> bool {
-        if !self
+        let manifest = match self
             .sidebar_sections()
             .iter()
-            .any(|s| s.items.contains(&section))
+            .flat_map(|group| group.items)
+            .find(|item| item.section == section)
         {
-            return false;
+            Some(manifest) => manifest,
+            None => return false,
+        };
+
+        match manifest.support {
+            SupportLevel::Unsupported => false,
+            SupportLevel::Supported => true,
+            SupportLevel::Conditional => is_device_section_supported(section, is_action_supported),
         }
-        is_device_section_supported(section, is_action_supported)
     }
 
     /// Candidate groups for tap targets (such as Mod-Tap or Layer-Tap).
@@ -96,6 +149,7 @@ fn is_device_section_supported(
 ) -> bool {
     match section {
         EditorSection::Keyboard
+        | EditorSection::Media
         | EditorSection::Special
         | EditorSection::Layers
         | EditorSection::Combo
@@ -106,7 +160,6 @@ fn is_device_section_supported(
         | EditorSection::Bluetooth
         | EditorSection::Output
         | EditorSection::System
-        | EditorSection::BootPower
         | EditorSection::RawHex => true,
 
         EditorSection::Backlight => is_action_supported(&KeySpec::Lighting(

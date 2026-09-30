@@ -7,9 +7,10 @@ use super::picker::{
     candidate_groups, modifier_toggle_grid, multi_candidate_groups, section_headline,
     CandidateGroup, SelectedKey, GRID_SPACING, SECTION_SPACING,
 };
-use super::profile::SidebarSection;
+use super::profile::{FeatureManifest, SidebarSection};
 use super::{EditTarget, EditorProfile, EditorState};
 use crate::key_paint::KeyPaintStyle;
+use keypeek_core::keymap_editor::ParameterSpec;
 use keypeek_core::{BacklightAction, HidKey, KeySpec, LayerActivation, LightingAction};
 use keypeek_protocol::Keyboard;
 
@@ -33,7 +34,7 @@ fn editor_left_panel(
     is_action_supported: &dyn Fn(&KeySpec) -> bool,
     profile: &dyn EditorProfile,
     current: EditorSection,
-    sections: &[SidebarSection<EditorSection>],
+    sections: &[SidebarSection<FeatureManifest>],
     search_query: &mut String,
 ) -> Option<EditorSection> {
     let mut selected = None;
@@ -60,7 +61,7 @@ fn editor_left_panel(
                                 let supported: Vec<EditorSection> = section
                                     .items
                                     .iter()
-                                    .copied()
+                                    .map(|item| item.section)
                                     .filter(|item| {
                                         profile.is_section_supported(*item, is_action_supported)
                                     })
@@ -135,7 +136,7 @@ impl EditorState {
             if let Some(first) = sections
                 .iter()
                 .flat_map(|s| s.items.iter())
-                .copied()
+                .map(|item| item.section)
                 .find(|s| profile.is_section_supported(*s, &is_action_supported))
             {
                 self.draft.section = first;
@@ -412,17 +413,43 @@ impl EditorState {
     fn draw_backlight_page(&mut self, ui: &mut egui::Ui, ctx: &PageContext<'_>) {
         let groups = ctx.profile.section_groups(EditorSection::Backlight);
         if !groups.is_empty() {
-            self.draw_candidate_groups_page(ui, ctx, groups);
+            let current_action = ctx.target.action(ctx.keyboard);
+            let selected = current_action.as_ref().map(SelectedKey::valid);
+            candidate_groups(
+                ui,
+                groups,
+                ctx.search_query,
+                |c| ctx.keyboard.is_action_supported(&c.binding),
+                selected,
+                ctx.style,
+                |_, candidate| {
+                    if let KeySpec::Lighting(LightingAction::Backlight(BacklightAction::Set(
+                        level,
+                    ))) = candidate.binding
+                    {
+                        self.draft.backlight_level = level;
+                    }
+                    self.commit_action(ctx.keyboard, ctx.target, candidate.binding.clone());
+                },
+            );
             ui.add_space(SECTION_SPACING);
         }
 
         if ctx.profile.supports_backlight_level() {
+            let (min, max) = groups
+                .iter()
+                .flat_map(|group| &group.candidates)
+                .find_map(|candidate| match candidate.parameter {
+                    Some(ParameterSpec::Brightness { min, max }) => Some((min, max)),
+                    _ => None,
+                })
+                .unwrap_or((0, 255));
             section_headline(ui, "Brightness Level");
             ui.horizontal(|ui| {
                 ui.label("Level:");
                 let drag = ui.add(
                     egui::DragValue::new(&mut self.draft.backlight_level)
-                        .range(0..=255)
+                        .range(min..=max)
                         .speed(1),
                 );
                 if drag.changed() || ui.button("Set").clicked() {

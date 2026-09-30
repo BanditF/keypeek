@@ -6,7 +6,7 @@ pub(crate) mod picker;
 
 pub use draft::KeyDraft;
 pub use picker::KEY_UNIT;
-pub use profile::{EditorProfile, LayerTapTarget, SidebarSection};
+pub use profile::{EditorProfile, FeatureManifest, LayerTapTarget, SidebarSection};
 
 use egui::Window;
 use keypeek_core::{KeySpec, KeycodeKind};

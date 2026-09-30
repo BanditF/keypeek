@@ -13,6 +13,7 @@ pub enum EditorSection {
     // Keys
     #[default]
     Keyboard,
+    Media,
     KeyToggle,
     Special,
 
@@ -27,7 +28,6 @@ pub enum EditorSection {
     Bluetooth,
     Output,
     System,
-    BootPower,
 
     // Lighting & Audio
     Backlight,
@@ -47,6 +47,7 @@ impl EditorSection {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Keyboard => "Key Press",
+            Self::Media => "Media",
             Self::KeyToggle => "Key Toggle",
             Self::Special => "Special",
             Self::Combo => "Modifier Key",
@@ -57,7 +58,6 @@ impl EditorSection {
             Self::Bluetooth => "Bluetooth",
             Self::Output => "Output Selection",
             Self::System => "System",
-            Self::BootPower => "Boot & Power",
             Self::Backlight => "Backlight",
             Self::Rgb => "Underglow",
             Self::RgbMatrix => "RGB Matrix",
@@ -100,7 +100,11 @@ impl KeyDraft {
 
         match spec {
             KeySpec::KeyPress { key, modifiers } => {
-                draft.section = EditorSection::Keyboard;
+                draft.section = match key.page {
+                    0x01 => EditorSection::System,
+                    0x0C => EditorSection::Media,
+                    _ => EditorSection::Keyboard,
+                };
                 draft.modifiers = modifiers.to_hid_mask();
                 draft.tap_key = Some(*key);
             }
@@ -155,7 +159,7 @@ impl KeyDraft {
                 draft.section = EditorSection::Output;
             }
             KeySpec::Power(_) => {
-                draft.section = EditorSection::BootPower;
+                draft.section = EditorSection::System;
             }
             KeySpec::Lighting(LightingAction::Backlight(bl)) => {
                 draft.section = EditorSection::Backlight;
@@ -347,6 +351,13 @@ impl KeyDraft {
             modifiers: Modifiers::default(),
         })
     }
+
+    /// Checks whether the draft's target layer is within bounds, if specified.
+    pub fn is_layer_in_bounds(&self, max_layer: u8) -> bool {
+        self.target_layer
+            .map(|l| crate::keymap_editor::ParameterSpec::Layer { max: max_layer }.accepts(l as u16))
+            .unwrap_or(true)
+    }
 }
 
 #[cfg(test)]
@@ -420,6 +431,8 @@ mod tests {
             })
         );
         assert!(draft.is_valid());
+        assert!(draft.is_layer_in_bounds(2));
+        assert!(!draft.is_layer_in_bounds(1));
     }
 
     #[test]
@@ -579,7 +592,7 @@ mod tests {
             }
             fn sidebar_sections(
                 &self,
-            ) -> &[crate::keymap_editor::profile::SidebarSection<EditorSection>] {
+            ) -> &[crate::keymap_editor::profile::SidebarSection<crate::keymap_editor::profile::FeatureManifest>] {
                 &[]
             }
             fn tap_categories(&self) -> &'static [crate::keymap_editor::candidate::CandidateGroup] {
@@ -626,7 +639,7 @@ mod tests {
             }
             fn sidebar_sections(
                 &self,
-            ) -> &[crate::keymap_editor::profile::SidebarSection<EditorSection>] {
+            ) -> &[crate::keymap_editor::profile::SidebarSection<crate::keymap_editor::profile::FeatureManifest>] {
                 &[]
             }
             fn tap_categories(&self) -> &'static [crate::keymap_editor::candidate::CandidateGroup] {
@@ -863,11 +876,20 @@ mod tests {
             key: HidKey::consumer(0xE2), // Mute
             modifiers: Modifiers::default(),
         };
-        // Media keys are ordinary key presses: they route to Key Press, where
-        // the Media group is available alongside the keyboard keys.
+        // Media keys route to the dedicated Media section as direct pickers.
         let draft = KeyDraft::from_spec(&media_key);
-        assert_eq!(draft.section, EditorSection::Keyboard);
+        assert_eq!(draft.section, EditorSection::Media);
         assert_eq!(draft.tap_key, Some(HidKey::consumer(0xE2)));
+        assert_eq!(draft.staged(), None);
+
+        let system_key = KeySpec::KeyPress {
+            key: HidKey::system(0x82), // Sleep
+            modifiers: Modifiers::default(),
+        };
+        // System keys route to the dedicated System section as direct pickers.
+        let draft = KeyDraft::from_spec(&system_key);
+        assert_eq!(draft.section, EditorSection::System);
+        assert_eq!(draft.staged(), None);
     }
 
     #[test]

@@ -166,27 +166,19 @@ pub fn parse_layout_json_str(
     let json: serde_json::Value = serde_json::from_str(content)
         .map_err(|e| DeviceError::Protocol(format!("Invalid layout JSON: {e}")))?;
 
-    // 1. VIA / Vial definition format: has "matrix" and "layouts"
+    // 1. VIA / Vial definition format: has "matrix" and either "layouts.keys" or a KLE keymap
     if let Some(_matrix) = json.get("matrix") {
         if let Some(layouts) = json.get("layouts") {
-            // Case 1a: layouts.keymap is direct array
-            if layouts.get("keymap").and_then(|v| v.as_array()).is_some() {
-                return super::kle_parser::parse_vial_definition(&json, vid, pid).map_err(|e| {
-                    DeviceError::Protocol(format!("Failed to parse VIA/Vial definition: {e}"))
+            if layouts.get("keys").and_then(Value::as_array).is_some() {
+                return super::kle_parser::parse_via_definition(&json, vid, pid).map_err(|e| {
+                    DeviceError::Protocol(format!("Failed to parse VIA definition: {e}"))
                 });
             }
-            // Case 1b: layouts.keymap.layout is array (VIA v3)
-            if let Some(keymap) = layouts.get("keymap") {
-                if let Some(layout_arr) = keymap.get("layout").and_then(|v| v.as_array()) {
-                    let mut modified_json = json.clone();
-                    modified_json["layouts"]["keymap"] =
-                        serde_json::Value::Array(layout_arr.clone());
-                    return super::kle_parser::parse_vial_definition(&modified_json, vid, pid)
-                        .map_err(|e| {
-                            DeviceError::Protocol(format!("Failed to parse VIA definition: {e}"))
-                        });
-                }
-            }
+        }
+        if let Some(keymap) = super::kle_parser::find_kle_keymap(&json) {
+            return super::kle_parser::parse_kle_definition(&json, keymap, vid, pid).map_err(|e| {
+                DeviceError::Protocol(format!("Failed to parse VIA/Vial definition: {e}"))
+            });
         }
     }
 
@@ -243,4 +235,55 @@ pub fn parse_layout_json_str(
     Err(DeviceError::Protocol(
         "Unrecognized layout format. Expected a VIA layout JSON or QMK info.json.".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_layout_json_str;
+
+    #[test]
+    fn parses_official_via_generated_definition() {
+        let content = r#"
+        {
+            "vendorProductId": 1077979750,
+            "matrix": {"rows": 5, "cols": 15},
+            "layouts": {
+                "labels": ["Split Backspace"],
+                "width": 16,
+                "height": 5,
+                "keys": [
+                    {"row": 0, "col": 0, "x": 0, "y": 0, "r": 0, "w": 1, "h": 1},
+                    {"row": 4, "col": 14, "x": 15, "y": 4, "r": 15, "w": 1.5, "h": 1},
+                    {"d": true, "x": 0, "y": 0, "w": 1, "h": 1},
+                    {"x": 1, "y": 1, "w": 1, "h": 1}
+                ],
+                "optionKeys": {
+                    "0": {
+                        "0": [{"row": 1, "col": 0, "x": 0, "y": 1}],
+                        "1": [
+                            {"row": 1, "col": 0, "x": 0, "y": 1},
+                            {"row": 1, "col": 1, "x": 1, "y": 1}
+                        ]
+                    }
+                }
+            }
+        }
+        "#;
+
+        let definition = parse_layout_json_str(content, 0x1234, 0x5678).unwrap();
+        assert_eq!(definition.rows, 5);
+        assert_eq!(definition.cols, 15);
+        // Base keys has 2 physical switches (the decal and the key without row were skipped)
+        // Default layout has base keys (2) + option 0 (1) = 3
+        assert_eq!(definition.layouts[0].name, "default");
+        assert_eq!(definition.layouts[0].keys.len(), 3);
+        assert_eq!(definition.layouts[0].keys[1].row, 4);
+        assert_eq!(definition.layouts[0].keys[1].col, 14);
+        assert_eq!(definition.layouts[0].keys[1].r, 15.0);
+
+        // Variant layout has base keys (2) + option 1 (2) = 4
+        assert_eq!(definition.layouts.len(), 2);
+        assert_eq!(definition.layouts[1].name, "VIA (Split Backspace)");
+        assert_eq!(definition.layouts[1].keys.len(), 4);
+    }
 }

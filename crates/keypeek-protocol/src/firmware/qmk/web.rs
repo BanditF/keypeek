@@ -1,6 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+
 use crate::platform::web_hid::WebHidTransport;
 use crate::protocols::DeviceError;
 use keypeek_core::{KeyboardDefinition, KeymapSnapshot, LayerInfo};
@@ -220,6 +223,75 @@ pub fn save_cached_layout(vid: u16, pid: u16, content: &str) {
     }
 }
 
+fn via_vendor_product_id(vid: u16, pid: u16) -> u64 {
+    (vid as u64) * 65536 + pid as u64
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_url_text(window: &web_sys::Window, url: &str) -> Result<String, DeviceError> {
+    let response = wasm_bindgen_futures::JsFuture::from(window.fetch_with_str(url))
+        .await
+        .map_err(|e| DeviceError::Transport(format!("Failed to fetch '{url}': {e:?}")))?;
+    let response: web_sys::Response = response
+        .dyn_into()
+        .map_err(|e| DeviceError::Transport(format!("Invalid response for '{url}': {e:?}")))?;
+    if !response.ok() {
+        return Err(DeviceError::Transport(format!(
+            "Fetch '{url}' returned HTTP status {}",
+            response.status()
+        )));
+    }
+    let text = wasm_bindgen_futures::JsFuture::from(
+        response
+            .text()
+            .map_err(|e| DeviceError::Transport(format!("Failed to read '{url}': {e:?}")))?,
+    )
+    .await
+    .map_err(|e| DeviceError::Transport(format!("Failed to read '{url}': {e:?}")))?
+    .as_string()
+    .ok_or_else(|| DeviceError::Transport(format!("Response for '{url}' was not text")))?;
+    Ok(text)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_catalog_layout(vid: u16, pid: u16) -> Result<Option<String>, DeviceError> {
+    let window = web_sys::window()
+        .ok_or_else(|| DeviceError::Transport("No window found while loading VIA catalog".into()))?;
+    let index_text =
+        fetch_url_text(&window, "https://usevia.app/definitions/supported_kbs.json").await?;
+    let index: serde_json::Value = serde_json::from_str(&index_text)
+        .map_err(|e| DeviceError::Protocol(format!("Invalid VIA catalog JSON: {e}")))?;
+
+    let vendor_product_id = via_vendor_product_id(vid, pid);
+    let definition_version = if index
+        .get("vendorProductIds")
+        .and_then(|ids| ids.get("v3"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|id| id.as_u64() == Some(vendor_product_id))
+    {
+        "v3"
+    } else if index
+        .get("vendorProductIds")
+        .and_then(|ids| ids.get("v2"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|id| id.as_u64() == Some(vendor_product_id))
+    {
+        "v2"
+    } else {
+        return Ok(None);
+    };
+
+    let definition_url = format!(
+        "https://usevia.app/definitions/{definition_version}/{vendor_product_id}.json"
+    );
+    let definition_text = fetch_url_text(&window, &definition_url).await?;
+    Ok(Some(definition_text))
+}
+
 /// Loads a VIA layout definition from provided JSON or localStorage.
 async fn load_via_definition(
     transport: &WebHidTransport,
@@ -239,10 +311,47 @@ async fn load_via_definition(
         save_cached_layout(vid, pid, json_content);
         Ok(Some(parsed))
     } else if let Some(cached) = get_cached_layout(vid, pid) {
-        let parsed = parse_layout_json_str(&cached, vid, pid)?;
-        Ok(Some(parsed))
+        match parse_layout_json_str(&cached, vid, pid) {
+            Ok(parsed) => Ok(Some(parsed)),
+            Err(e) => {
+                log::warn!("Cached layout for {vid:04X}:{pid:04X} could not be parsed: {e}");
+                fetch_and_cache_catalog_layout(vid, pid).await
+            }
+        }
     } else {
-        Ok(None)
+        fetch_and_cache_catalog_layout(vid, pid).await
+    }
+}
+
+async fn fetch_and_cache_catalog_layout(
+    vid: u16,
+    pid: u16,
+) -> Result<Option<KeyboardDefinition>, DeviceError> {
+    log::info!("Checking official VIA catalog for {vid:04X}:{pid:04X}...");
+    match fetch_catalog_layout(vid, pid).await {
+        Ok(Some(content)) => match parse_layout_json_str(&content, vid, pid) {
+            Ok(parsed) => {
+                log::info!(
+                    "Successfully loaded VIA layout from official catalog for {vid:04X}:{pid:04X}"
+                );
+                save_cached_layout(vid, pid, &content);
+                Ok(Some(parsed))
+            }
+            Err(error) => {
+                log::warn!(
+                    "Official VIA definition was found for {vid:04X}:{pid:04X}, but failed to parse: {error}"
+                );
+                Ok(None)
+            }
+        },
+        Ok(None) => {
+            log::info!("Keyboard {vid:04X}:{pid:04X} not found in official VIA catalog");
+            Ok(None)
+        }
+        Err(error) => {
+            log::warn!("Failed to fetch official VIA catalog: {error}");
+            Ok(None)
+        }
     }
 }
 

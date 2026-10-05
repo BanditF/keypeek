@@ -13,12 +13,15 @@ pub fn parse_vial_definition(
     parse_kle_definition(json, keymap, vid, pid)
 }
 
+use super::catalog::resolve_vendor_product_ids;
+
 pub fn parse_kle_definition(
     json: &Value,
     keymap: &[Value],
     vid: u16,
     pid: u16,
 ) -> Result<KeyboardDefinition, Box<dyn Error>> {
+    let (vid, pid) = resolve_vendor_product_ids(json, vid, pid);
     let matrix = json
         .get("matrix")
         .ok_or_else(|| Box::<dyn Error>::from("No 'matrix' found in definition"))?;
@@ -88,6 +91,7 @@ pub fn parse_via_definition(
     vid: u16,
     pid: u16,
 ) -> Result<KeyboardDefinition, Box<dyn Error>> {
+    let (vid, pid) = resolve_vendor_product_ids(json, vid, pid);
     let matrix = json
         .get("matrix")
         .ok_or_else(|| Box::<dyn Error>::from("No 'matrix' found in VIA definition"))?;
@@ -164,10 +168,7 @@ fn parse_via_option_groups(
     Ok(option_groups)
 }
 
-fn build_via_layouts(
-    base_keys: Vec<Key>,
-    option_groups: &[ViaOptionGroup],
-) -> Vec<KeyboardLayout> {
+fn build_via_layouts(base_keys: Vec<Key>, option_groups: &[ViaOptionGroup]) -> Vec<KeyboardLayout> {
     if option_groups.is_empty() {
         return vec![KeyboardLayout {
             name: "default".to_string(),
@@ -305,11 +306,13 @@ fn parse_via_keys(raw_keys: &[Value]) -> Result<Vec<Key>, Box<dyn Error>> {
         let x = key
             .get("x")
             .and_then(Value::as_f64)
-            .ok_or_else(|| Box::<dyn Error>::from("VIA layout key has no x"))? as f32;
+            .ok_or_else(|| Box::<dyn Error>::from("VIA layout key has no x"))?
+            as f32;
         let y = key
             .get("y")
             .and_then(Value::as_f64)
-            .ok_or_else(|| Box::<dyn Error>::from("VIA layout key has no y"))? as f32;
+            .ok_or_else(|| Box::<dyn Error>::from("VIA layout key has no y"))?
+            as f32;
         let w = key.get("w").and_then(Value::as_f64).unwrap_or(1.0) as f32;
         let h = key.get("h").and_then(Value::as_f64).unwrap_or(1.0) as f32;
         let r = key.get("r").and_then(Value::as_f64).unwrap_or(0.0) as f32;

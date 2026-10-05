@@ -1,3 +1,4 @@
+pub mod catalog;
 pub mod codec;
 pub mod common;
 pub mod discovery;
@@ -49,8 +50,12 @@ impl FirmwareBundle for QmkBundle {
     fn connect(&self, spec: &ConnectionSpec) -> Result<Box<dyn KeyboardProtocol>, DeviceError> {
         #[cfg(feature = "hidapi")]
         match spec {
-            ConnectionSpec::Via { json_path } => {
-                let protocol = via::ViaProtocol::connect(json_path)?;
+            ConnectionSpec::Via {
+                vid,
+                pid,
+                json_path,
+            } => {
+                let protocol = via::ViaProtocol::connect(*vid, *pid, json_path)?;
                 Ok(Box::new(protocol))
             }
             ConnectionSpec::Vial { vid, pid } => {

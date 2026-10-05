@@ -9,7 +9,9 @@ pub fn get_layer_layout_key(keycode_bytes: u16) -> Option<LayoutKey> {
         QmkKeycode::LayerOp { op, layer } => {
             let (border, layer_ref, behavior) = match op {
                 QmkLayerOp::To | QmkLayerOp::Toggle => (BorderStyle::Solid, Some(layer), None),
-                QmkLayerOp::Momentary | QmkLayerOp::TapToggle => (BorderStyle::None, Some(layer), None),
+                QmkLayerOp::Momentary | QmkLayerOp::TapToggle => {
+                    (BorderStyle::None, Some(layer), None)
+                }
                 QmkLayerOp::OneShot => (BorderStyle::Dashed, Some(layer), None),
                 QmkLayerOp::Default => (BorderStyle::Solid, None, None),
                 QmkLayerOp::PersistentDefault => {

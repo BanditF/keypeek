@@ -839,27 +839,13 @@ fn get_basic_layout_key_static(keycode: Keycode) -> Option<LayoutKey> {
             tap: Label::new("Esc `"),
             ..Default::default()
         }),
-        Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN => {
-            space_cadet_layout_key(0xE1, "(")
-        }
-        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE => {
-            space_cadet_layout_key(0xE5, ")")
-        }
-        Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN => {
-            space_cadet_layout_key(0xE0, "(")
-        }
-        Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE => {
-            space_cadet_layout_key(0xE4, ")")
-        }
-        Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN => {
-            space_cadet_layout_key(0xE2, "(")
-        }
-        Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE => {
-            space_cadet_layout_key(0xE6, ")")
-        }
-        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER => {
-            space_cadet_layout_key(0xE5, "Enter")
-        }
+        Keycode::QK_SPACE_CADET_LEFT_SHIFT_PARENTHESIS_OPEN => space_cadet_layout_key(0xE1, "("),
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_PARENTHESIS_CLOSE => space_cadet_layout_key(0xE5, ")"),
+        Keycode::QK_SPACE_CADET_LEFT_CTRL_PARENTHESIS_OPEN => space_cadet_layout_key(0xE0, "("),
+        Keycode::QK_SPACE_CADET_RIGHT_CTRL_PARENTHESIS_CLOSE => space_cadet_layout_key(0xE4, ")"),
+        Keycode::QK_SPACE_CADET_LEFT_ALT_PARENTHESIS_OPEN => space_cadet_layout_key(0xE2, "("),
+        Keycode::QK_SPACE_CADET_RIGHT_ALT_PARENTHESIS_CLOSE => space_cadet_layout_key(0xE6, ")"),
+        Keycode::QK_SPACE_CADET_RIGHT_SHIFT_ENTER => space_cadet_layout_key(0xE5, "Enter"),
         Keycode::QK_VELOCIKEY_TOGGLE => Some(LayoutKey {
             tap: Label::with_short("Velocikey", "VelKey"),
             ..Default::default()

@@ -13,6 +13,8 @@ pub use transport::MockHidTransport;
 pub enum DeviceError {
     /// Device is locked (e.g. an unlock key combination is required).
     DeviceLocked,
+    /// A layout definition file is required because the device was not found in the VIA catalog.
+    LayoutFileRequired,
     /// Physical or transport connection error (e.g. serial port, BLE, HID I/O).
     Transport(String),
     /// Protocol communication error or unexpected payload.
@@ -29,6 +31,7 @@ impl fmt::Display for DeviceError {
                 "Device is locked. Unlock it on the keyboard (e.g. with its unlock key \
                  combination), then try again."
             ),
+            Self::LayoutFileRequired => write!(f, "Layout definition file is required"),
             Self::Transport(msg) => write!(f, "Transport error: {msg}"),
             Self::Protocol(msg) => write!(f, "Protocol error: {msg}"),
             Self::Unsupported(msg) => write!(f, "Unsupported: {msg}"),
@@ -235,6 +238,8 @@ pub enum ZmkTransportConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionSpec {
     Via {
+        vid: u16,
+        pid: u16,
         json_path: String,
     },
     Vial {

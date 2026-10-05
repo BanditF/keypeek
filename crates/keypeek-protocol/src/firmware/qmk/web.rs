@@ -205,26 +205,24 @@ pub use super::common::QmkProtocol;
 
 pub use super::json_parser::parse_layout_json_str;
 
+fn web_cache_key(vid: u16, pid: u16) -> String {
+    format!("via_layout_{}", super::catalog::cache_stem(vid, pid))
+}
+
 /// Retrieves cached layout JSON for a given VID/PID from browser localStorage.
 pub fn get_cached_layout(vid: u16, pid: u16) -> Option<String> {
     let window = web_sys::window()?;
     let storage = window.local_storage().ok()??;
-    storage
-        .get_item(&format!("via_layout_{vid:04x}_{pid:04x}"))
-        .ok()?
+    storage.get_item(&web_cache_key(vid, pid)).ok()?
 }
 
 /// Persists layout JSON for a given VID/PID to browser localStorage.
 pub fn save_cached_layout(vid: u16, pid: u16, content: &str) {
     if let Some(window) = web_sys::window() {
         if let Ok(Some(storage)) = window.local_storage() {
-            let _ = storage.set_item(&format!("via_layout_{vid:04x}_{pid:04x}"), content);
+            let _ = storage.set_item(&web_cache_key(vid, pid), content);
         }
     }
-}
-
-fn via_vendor_product_id(vid: u16, pid: u16) -> u64 {
-    (vid as u64) * 65536 + pid as u64
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -255,39 +253,18 @@ async fn fetch_url_text(window: &web_sys::Window, url: &str) -> Result<String, D
 
 #[cfg(target_arch = "wasm32")]
 async fn fetch_catalog_layout(vid: u16, pid: u16) -> Result<Option<String>, DeviceError> {
-    let window = web_sys::window()
-        .ok_or_else(|| DeviceError::Transport("No window found while loading VIA catalog".into()))?;
-    let index_text =
-        fetch_url_text(&window, "https://usevia.app/definitions/supported_kbs.json").await?;
+    let window = web_sys::window().ok_or_else(|| {
+        DeviceError::Transport("No window found while loading VIA catalog".into())
+    })?;
+    let index_text = fetch_url_text(&window, super::catalog::VIA_CATALOG_INDEX_URL).await?;
     let index: serde_json::Value = serde_json::from_str(&index_text)
         .map_err(|e| DeviceError::Protocol(format!("Invalid VIA catalog JSON: {e}")))?;
 
-    let vendor_product_id = via_vendor_product_id(vid, pid);
-    let definition_version = if index
-        .get("vendorProductIds")
-        .and_then(|ids| ids.get("v3"))
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .any(|id| id.as_u64() == Some(vendor_product_id))
-    {
-        "v3"
-    } else if index
-        .get("vendorProductIds")
-        .and_then(|ids| ids.get("v2"))
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .any(|id| id.as_u64() == Some(vendor_product_id))
-    {
-        "v2"
-    } else {
+    let Some(version) = super::catalog::find_definition_version(&index, vid, pid) else {
         return Ok(None);
     };
 
-    let definition_url = format!(
-        "https://usevia.app/definitions/{definition_version}/{vendor_product_id}.json"
-    );
+    let definition_url = super::catalog::definition_url(version, vid, pid);
     let definition_text = fetch_url_text(&window, &definition_url).await?;
     Ok(Some(definition_text))
 }

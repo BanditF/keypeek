@@ -506,6 +506,8 @@ pub async fn request_and_connect_device(
             let mut dev = discovered;
             dev.requires_layout_file = true;
             dev.spec = ConnectionSpec::Via {
+                vid,
+                pid,
                 json_path: String::new(),
             };
             Ok(Some(WebConnectOutcome::RequiresLayoutFile {

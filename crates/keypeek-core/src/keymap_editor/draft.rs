@@ -355,7 +355,9 @@ impl KeyDraft {
     /// Checks whether the draft's target layer is within bounds, if specified.
     pub fn is_layer_in_bounds(&self, max_layer: u8) -> bool {
         self.target_layer
-            .map(|l| crate::keymap_editor::ParameterSpec::Layer { max: max_layer }.accepts(l as u16))
+            .map(|l| {
+                crate::keymap_editor::ParameterSpec::Layer { max: max_layer }.accepts(l as u16)
+            })
             .unwrap_or(true)
     }
 }
@@ -592,7 +594,9 @@ mod tests {
             }
             fn sidebar_sections(
                 &self,
-            ) -> &[crate::keymap_editor::profile::SidebarSection<crate::keymap_editor::profile::FeatureManifest>] {
+            ) -> &[crate::keymap_editor::profile::SidebarSection<
+                crate::keymap_editor::profile::FeatureManifest,
+            >] {
                 &[]
             }
             fn tap_categories(&self) -> &'static [crate::keymap_editor::candidate::CandidateGroup] {
@@ -639,7 +643,9 @@ mod tests {
             }
             fn sidebar_sections(
                 &self,
-            ) -> &[crate::keymap_editor::profile::SidebarSection<crate::keymap_editor::profile::FeatureManifest>] {
+            ) -> &[crate::keymap_editor::profile::SidebarSection<
+                crate::keymap_editor::profile::FeatureManifest,
+            >] {
                 &[]
             }
             fn tap_categories(&self) -> &'static [crate::keymap_editor::candidate::CandidateGroup] {

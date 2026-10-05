@@ -215,11 +215,11 @@ impl EditorState {
         ui: &mut egui::Ui,
         id_salt: &str,
         mods: u8,
-        valid: bool,
         enabled: bool,
         ctx: &PageContext<'_>,
         mut apply: impl FnMut(&mut KeyDraft, u8),
     ) {
+        let valid = self.draft.is_valid();
         modifier_toggle_grid(ui, id_salt, mods, valid, enabled, ctx.style, |mask| {
             apply(&mut self.draft, mask);
             self.commit_draft(ctx.keyboard, ctx.profile, ctx.target);
@@ -270,7 +270,6 @@ impl EditorState {
         _section: EditorSection,
         id_salt: &str,
     ) {
-        let is_valid = self.draft.is_valid();
         let mods_supported = self.draft.tap_key.map(|k| k.page == 0x07).unwrap_or(true);
 
         section_headline(ui, "Modifiers");
@@ -278,7 +277,6 @@ impl EditorState {
             ui,
             id_salt,
             self.draft.modifiers,
-            is_valid,
             mods_supported,
             ctx,
             |d, m| {
@@ -313,14 +311,12 @@ impl EditorState {
     }
 
     fn draw_tap_key_picker(&mut self, ui: &mut egui::Ui, ctx: &PageContext<'_>) {
-        let is_valid = self.draft.is_valid();
         section_headline(ui, "Tap key");
         if ctx.profile.supports_tap_modifiers() {
             self.draw_mod_grid(
                 ui,
                 "tap_mods",
                 self.draft.tap_modifiers,
-                is_valid,
                 true,
                 ctx,
                 |d, m| d.tap_modifiers ^= m,
@@ -331,17 +327,10 @@ impl EditorState {
     }
 
     fn draw_mod_tap_page(&mut self, ui: &mut egui::Ui, ctx: &PageContext<'_>) {
-        let is_valid = self.draft.is_valid();
         section_headline(ui, "Hold modifier");
-        self.draw_mod_grid(
-            ui,
-            "hold_mods",
-            self.draft.hold_mods,
-            is_valid,
-            true,
-            ctx,
-            |d, m| d.hold_mods ^= m,
-        );
+        self.draw_mod_grid(ui, "hold_mods", self.draft.hold_mods, true, ctx, |d, m| {
+            d.hold_mods ^= m
+        });
         ui.add_space(SECTION_SPACING);
 
         self.draw_tap_key_picker(ui, ctx);
@@ -392,13 +381,11 @@ impl EditorState {
     }
 
     fn draw_one_shot_page(&mut self, ui: &mut egui::Ui, ctx: &PageContext<'_>) {
-        let is_valid = self.draft.is_valid();
         section_headline(ui, ctx.profile.section_label(EditorSection::OneShot));
         self.draw_mod_grid(
             ui,
             "oneshot_mods",
             self.draft.modifiers,
-            is_valid,
             true,
             ctx,
             |d, m| d.modifiers ^= m,
@@ -512,7 +499,6 @@ impl EditorState {
             ui,
             "layermod_mods",
             self.draft.modifiers,
-            is_valid,
             true,
             ctx,
             |d, m| d.modifiers ^= m,

@@ -387,7 +387,7 @@ impl DeviceConnectionManager {
                 self.state = ConnectionState::RequiresLayoutFile { device: dev };
                 return ConnectOutcome::RequiresLayoutFile;
             }
-            if let ConnectionSpec::Via { json_path } = &mut spec {
+            if let ConnectionSpec::Via { json_path, .. } = &mut spec {
                 *json_path = path.to_string();
             }
         }
@@ -425,6 +425,14 @@ impl DeviceConnectionManager {
                     device: device.clone(),
                 };
                 ConnectionEvent::DeviceLocked(device)
+            }
+            DeviceError::LayoutFileRequired => {
+                let mut device = self.selected_or_fallback_device();
+                device.requires_layout_file = true;
+                self.state = ConnectionState::RequiresLayoutFile {
+                    device: device.clone(),
+                };
+                ConnectionEvent::RequiresLayoutFile(device)
             }
             other => {
                 let err_str = other.to_string();

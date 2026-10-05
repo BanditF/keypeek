@@ -2761,6 +2761,7 @@ dependencies = [
 name = "keypeek-protocol"
 version = "0.11.0"
 dependencies = [
+ "directories",
  "egui-phosphor",
  "futures-channel",
  "futures-util",
@@ -2774,6 +2775,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serialport",
+ "ureq",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wayland-client",

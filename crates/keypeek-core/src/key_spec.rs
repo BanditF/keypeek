@@ -342,7 +342,9 @@ impl SpaceCadet {
     pub const fn argument_label(self) -> &'static str {
         match self {
             Self::LeftCtrlOpenParen | Self::LeftShiftOpenParen | Self::LeftAltOpenParen => "(",
-            Self::RightCtrlCloseParen | Self::RightShiftCloseParen | Self::RightAltCloseParen => ")",
+            Self::RightCtrlCloseParen | Self::RightShiftCloseParen | Self::RightAltCloseParen => {
+                ")"
+            }
             Self::RightShiftEnter => "Enter",
         }
     }

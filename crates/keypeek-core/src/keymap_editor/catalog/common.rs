@@ -165,8 +165,8 @@ pub fn build_keyboard_candidates(
                     key: HidKey::keyboard(id),
                     modifiers: Modifiers::default(),
                 };
-                let mut cand = Candidate::from_action(action, presenter, &[])
-                    .with_search_tokens(token_fn(id));
+                let mut cand =
+                    Candidate::from_action(action, presenter, &[]).with_search_tokens(token_fn(id));
                 if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                     cand.key.symbol = Some(format!("0x{:02X}", id));
                 }
@@ -192,8 +192,8 @@ pub fn build_international_candidates(
                 key: HidKey::keyboard(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[])
-                .with_search_tokens(token_fn(id));
+            let mut cand =
+                Candidate::from_action(action, presenter, &[]).with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:02X}", id));
             }
@@ -240,8 +240,8 @@ pub fn build_media_candidates(
                 key: HidKey::consumer(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[])
-                .with_search_tokens(token_fn(id));
+            let mut cand =
+                Candidate::from_action(action, presenter, &[]).with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:04X}", id));
             }
@@ -265,8 +265,8 @@ pub fn build_app_and_web_candidates(
                 key: HidKey::consumer(id),
                 modifiers: Modifiers::default(),
             };
-            let mut cand = Candidate::from_action(action, presenter, &[])
-                .with_search_tokens(token_fn(id));
+            let mut cand =
+                Candidate::from_action(action, presenter, &[]).with_search_tokens(token_fn(id));
             if cand.key.symbol.is_none() && cand.key.tap.is_empty() {
                 cand.key.symbol = Some(format!("0x{:04X}", id));
             }
@@ -281,7 +281,10 @@ pub fn build_bluetooth_group(
     extra_tokens_fn: impl Fn(BluetoothAction) -> &'static [&'static str],
 ) -> CandidateGroup {
     let base_actions: &[(BluetoothAction, &[&str])] = &[
-        (BluetoothAction::Clear, &["bt clear", "bt clr", "disconnect"]),
+        (
+            BluetoothAction::Clear,
+            &["bt clear", "bt clr", "disconnect"],
+        ),
         (BluetoothAction::Next, &["bt next", "bt nxt"]),
         (BluetoothAction::Prev, &["bt prev", "bt prv"]),
         (BluetoothAction::ClearAll, &["bt clear all", "bt clr all"]),
@@ -434,7 +437,11 @@ pub fn build_backlight_group(
         (BacklightAction::Off, &["bl off", "backlight off"], None),
         (BacklightAction::Inc, &["bl inc", "backlight up"], None),
         (BacklightAction::Dec, &["bl dec", "backlight down"], None),
-        (BacklightAction::Cycle, &["bl step", "backlight cycle"], None),
+        (
+            BacklightAction::Cycle,
+            &["bl step", "backlight cycle"],
+            None,
+        ),
         (
             BacklightAction::BreathingToggle,
             &["bl breath", "bl breathing"],

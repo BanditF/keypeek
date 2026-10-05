@@ -4,9 +4,7 @@ use crate::firmware::qmk::QmkKeyPresenter;
 use keypeek_core::keymap_editor::catalog::common;
 use keypeek_core::keymap_editor::draft::EditorSection;
 use keypeek_core::keymap_editor::profile::{EditorProfile, SidebarSection};
-use keypeek_core::keymap_editor::{
-    Candidate, CandidateGroup, FeatureManifest, LayerTapTarget,
-};
+use keypeek_core::keymap_editor::{Candidate, CandidateGroup, FeatureManifest, LayerTapTarget};
 use keypeek_core::{
     AudioAction, AutoShiftAction, BacklightAction, ComboAction, CustomBinding, CustomKind, HidKey,
     KeyPresenter, KeySpec, LayerActivation, LayoutKey, Modifiers, MouseAction, MouseButton,
@@ -1319,9 +1317,8 @@ mod tests {
     fn parameter_metadata_matches_qmk_bindings() {
         let profile = QmkEditorProfile;
         let layer_names = Vec::new();
-        let mut groups: Vec<CandidateGroup> = profile
-            .section_groups(EditorSection::Layers)
-            .to_vec();
+        let mut groups: Vec<CandidateGroup> =
+            profile.section_groups(EditorSection::Layers).to_vec();
         groups.extend(profile.layer_groups(2, &layer_names, LayerTapTarget::default()));
 
         for candidate in groups.iter().flat_map(|group| &group.candidates) {

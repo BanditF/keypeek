@@ -1,14 +1,12 @@
 use super::common::{QmkFeatures, QmkProtocol};
-use super::json_parser;
 use crate::protocols::DeviceError;
 use qmk_via_api::api::KeyboardApi;
 
 pub struct ViaProtocol;
 
 impl ViaProtocol {
-    pub fn connect(json_path: &str) -> Result<QmkProtocol, DeviceError> {
-        let definition = json_parser::parse_qmk_json(json_path)
-            .map_err(|e| DeviceError::Protocol(e.to_string()))?;
+    pub fn connect(vid: u16, pid: u16, json_path: &str) -> Result<QmkProtocol, DeviceError> {
+        let definition = super::catalog::load_desktop_via_definition(vid, pid, json_path)?;
         let api = Self::get_api(definition.vid, definition.pid)?;
         let features = QmkFeatures::probe(&api);
 

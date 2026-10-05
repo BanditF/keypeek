@@ -33,22 +33,17 @@ impl DeviceDriverScanner for QmkScanner {
                 .product
                 .clone()
                 .unwrap_or_else(|| format!("{:04X}:{:04X}", dev.vendor_id, dev.product_id));
-            let (driver_id, protocol_label, requires_layout_file, spec) = if is_vial_device(dev) {
-                (
-                    "vial",
-                    "Vial",
-                    false,
-                    ConnectionSpec::Vial {
-                        vid: dev.vendor_id,
-                        pid: dev.product_id,
-                    },
-                )
+            let vid = dev.vendor_id;
+            let pid = dev.product_id;
+            let (driver_id, protocol_label, spec) = if is_vial_device(dev) {
+                ("vial", "Vial", ConnectionSpec::Vial { vid, pid })
             } else {
                 (
                     "via",
                     "QMK",
-                    true,
                     ConnectionSpec::Via {
+                        vid,
+                        pid,
                         json_path: String::new(),
                     },
                 )
@@ -56,11 +51,11 @@ impl DeviceDriverScanner for QmkScanner {
 
             devices.push(DiscoveredDevice {
                 base_name,
-                vid: dev.vendor_id,
-                pid: dev.product_id,
+                vid,
+                pid,
                 driver_id,
                 protocol_label,
-                requires_layout_file,
+                requires_layout_file: false,
                 spec,
             });
         }
@@ -138,6 +133,6 @@ mod tests {
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].vid, 0x3333);
         assert_eq!(devices[0].protocol_label, "QMK");
-        assert!(devices[0].requires_layout_file);
+        assert!(!devices[0].requires_layout_file);
     }
 }

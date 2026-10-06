@@ -235,8 +235,18 @@ impl DeviceConnectionManager {
 
     pub fn select_device(&mut self, index: usize) {
         if self.available_devices.get(index).is_some() {
+            let changed = self.selected_device_index != Some(index);
             self.selected_device_index = Some(index);
-            self.preferred_layout_name = None;
+            if changed {
+                self.preferred_layout_name = None;
+                self.layout_file_path.clear();
+            }
+            if matches!(
+                self.state,
+                ConnectionState::RequiresLayoutFile { .. } | ConnectionState::Error(_)
+            ) {
+                self.state = ConnectionState::Disconnected;
+            }
         }
     }
 
@@ -312,6 +322,7 @@ impl DeviceConnectionManager {
                 | ConnectionState::Scanning
                 | ConnectionState::Error(_)
                 | ConnectionState::Locked { .. }
+                | ConnectionState::RequiresLayoutFile { .. }
         )
     }
 
@@ -626,6 +637,7 @@ mod tests {
         // Requires layout file, but path is empty -> RequiresLayoutFile state
         assert_eq!(mgr.connect(config), ConnectOutcome::RequiresLayoutFile);
         assert!(mgr.state().is_requires_layout_file());
+        assert!(mgr.can_select_device());
         match mgr.state() {
             ConnectionState::RequiresLayoutFile { device } => {
                 assert_eq!(device.base_name, "Test Keyboard");

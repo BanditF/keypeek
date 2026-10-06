@@ -221,6 +221,10 @@ impl DesktopOverlayApp {
             self.connection_mgr
                 .set_layout_file_path(path.to_string_lossy().to_string());
             self.connect_from_ui();
+        } else if self.file_dialog.state() == &egui_file_dialog::DialogState::Cancelled {
+            if self.connection_mgr.state().is_requires_layout_file() {
+                self.connection_mgr.disconnect();
+            }
         }
 
         self.sync_mouse_passthrough(host);

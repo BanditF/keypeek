@@ -88,6 +88,7 @@ pub struct WebHidTransport {
     device: web_sys::HidDevice,
     event_rx: Mutex<Option<mpsc::Receiver<DeviceEvent>>>,
     response_slot: Arc<Mutex<ResponseSlot>>,
+    command_lock: futures_util::lock::Mutex<()>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -131,6 +132,7 @@ impl WebHidTransport {
             device,
             event_rx: Mutex::new(None),
             response_slot,
+            command_lock: futures_util::lock::Mutex::new(()),
         })
     }
 
@@ -244,6 +246,8 @@ impl WebHidTransport {
         payload: &[u8],
         timeout_ms: i32,
     ) -> Result<Vec<u8>, DeviceError> {
+        let _guard = self.command_lock.lock().await;
+
         // Clear any stale responses before sending a new command
         self.response_slot.lock().unwrap().pending.clear();
 

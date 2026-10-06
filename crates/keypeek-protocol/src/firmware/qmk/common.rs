@@ -166,6 +166,9 @@ impl WebQmkBackend {
 }
 
 #[cfg(target_arch = "wasm32")]
+const VIA_CMD_SET_KEY: u8 = 0x05;
+
+#[cfg(target_arch = "wasm32")]
 impl QmkBackend for WebQmkBackend {
     fn set_key(
         &mut self,
@@ -174,14 +177,19 @@ impl QmkBackend for WebQmkBackend {
         col: usize,
         keycode: u16,
     ) -> Result<(), DeviceError> {
-        let mut report = vec![0u8; 32];
-        report[0] = 0x05; // VIA_CMD_SET_KEY
-        report[1] = layer as u8;
-        report[2] = row as u8;
-        report[3] = col as u8;
-        report[4] = (keycode >> 8) as u8;
-        report[5] = (keycode & 0xFF) as u8;
-        self.transport.fire_and_forget_report(&report);
+        let transport = Arc::clone(&self.transport);
+        wasm_bindgen_futures::spawn_local(async move {
+            let payload = [
+                layer as u8,
+                row as u8,
+                col as u8,
+                (keycode >> 8) as u8,
+                (keycode & 0xFF) as u8,
+            ];
+            if let Err(e) = transport.command(VIA_CMD_SET_KEY, &payload).await {
+                log::error!("Failed to write QMK key over WebHID: {e:?}");
+            }
+        });
         Ok(())
     }
 }

@@ -104,6 +104,14 @@ impl WebOverlayApp {
             .close(self.connection_mgr.connected_keyboard().as_deref());
     }
 
+    /// Disconnects the active keyboard connection, tears down protocol session,
+    /// and closes the keymap editor.
+    pub fn disconnect_from_ui(&mut self) {
+        self.close_editor();
+        self.connection_mgr.disconnect();
+        self.ui.clear_alerts();
+    }
+
     /// Requests the editor window to close, initiating a ZMK save first if changes
     /// are pending; otherwise closes immediately.
     #[allow(dead_code)]
@@ -591,6 +599,9 @@ impl WebOverlayApp {
                 // Connection status and alerts on the right.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(_kbd) = keyboard {
+                        if ui.button("Disconnect").clicked() {
+                            self.disconnect_from_ui();
+                        }
                         let dev_name = self
                             .connection_mgr
                             .selected_device()

@@ -5,7 +5,9 @@ use super::rpc::{self as zmk_rpc, ZmkStudioSession, ZmkTransport};
 use crate::protocols::pump_hid_reader;
 #[cfg(test)]
 use crate::protocols::RawHidTransport;
-use crate::protocols::{DeviceError, DeviceEvent, KeyboardProtocol, Reopener, WriteSupport};
+use crate::protocols::{
+    DeviceError, DeviceEvent, KeyboardProtocol, Reopener, StopSignal, WriteSupport,
+};
 use keypeek_core::{KeySpec, KeyboardDefinition, KeymapSnapshot, LayerInfo};
 #[cfg(feature = "desktop")]
 use std::error::Error;
@@ -194,6 +196,13 @@ pub struct ZmkProtocol {
     layout: Arc<ZmkLayout>,
     backend: Box<dyn ZmkBackend>,
     reopener: Option<Arc<dyn Reopener>>,
+    stop_signal: StopSignal,
+}
+
+impl Drop for ZmkProtocol {
+    fn drop(&mut self) {
+        self.stop_signal.stop();
+    }
 }
 
 #[cfg(feature = "desktop")]
@@ -232,6 +241,8 @@ impl ZmkProtocol {
         )?;
 
         let (event_tx, event_rx) = mpsc::channel();
+        let stop_signal = StopSignal::new();
+        let reader_stop = stop_signal.clone();
         std::thread::spawn(move || {
             pump_hid_reader(
                 || {
@@ -241,6 +252,7 @@ impl ZmkProtocol {
                 },
                 event_tx,
                 "ZMK HID device disconnected",
+                reader_stop,
             );
         });
 
@@ -255,6 +267,7 @@ impl ZmkProtocol {
             layout,
             backend,
             reopener,
+            stop_signal,
         })
     }
 
@@ -266,6 +279,8 @@ impl ZmkProtocol {
         hid_transport: Option<Box<dyn RawHidTransport>>,
     ) -> Self {
         let backend = Box::new(NativeZmkBackend::new(transport));
+        let stop_signal = StopSignal::new();
+        let reader_stop = stop_signal.clone();
         let event_rx = hid_transport.map(|mut transport| {
             let (event_tx, event_rx) = mpsc::channel();
             std::thread::spawn(move || {
@@ -277,6 +292,7 @@ impl ZmkProtocol {
                     },
                     event_tx,
                     "ZMK HID device disconnected",
+                    reader_stop,
                 );
             });
             event_rx
@@ -286,6 +302,7 @@ impl ZmkProtocol {
             layout,
             backend,
             reopener: None,
+            stop_signal,
         }
     }
 
@@ -300,6 +317,7 @@ impl ZmkProtocol {
             layout,
             backend,
             reopener: None,
+            stop_signal: StopSignal::new(),
         }
     }
 }
@@ -327,6 +345,10 @@ fn should_drop_session(err: &(dyn Error + 'static)) -> bool {
 }
 
 impl KeyboardProtocol for ZmkProtocol {
+    fn disconnect(&mut self) {
+        self.stop_signal.stop();
+    }
+
     fn get_layout_definition(&self) -> &KeyboardDefinition {
         &self.layout.definition
     }

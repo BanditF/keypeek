@@ -37,12 +37,11 @@ pub struct KeyboardSession {
     write_support: WriteSupport,
     supports_live_layout_switching: bool,
     action_filter: Option<ActionFilter>,
+    protocol: Arc<Mutex<Box<dyn KeyboardProtocol>>>,
     #[cfg(target_arch = "wasm32")]
     event_rx: Mutex<mpsc::Receiver<DeviceEvent>>,
     #[cfg(target_arch = "wasm32")]
     domain: Arc<KeyboardDomain>,
-    #[cfg(target_arch = "wasm32")]
-    protocol: Arc<Mutex<Box<dyn KeyboardProtocol>>>,
     #[cfg(target_arch = "wasm32")]
     layer_names: Vec<String>,
     #[cfg(target_arch = "wasm32")]
@@ -126,12 +125,11 @@ impl KeyboardSession {
             write_support,
             supports_live_layout_switching,
             action_filter,
+            protocol,
             #[cfg(target_arch = "wasm32")]
             event_rx: Mutex::new(event_rx),
             #[cfg(target_arch = "wasm32")]
             domain,
-            #[cfg(target_arch = "wasm32")]
-            protocol,
             #[cfg(target_arch = "wasm32")]
             layer_names,
             #[cfg(target_arch = "wasm32")]
@@ -139,6 +137,14 @@ impl KeyboardSession {
             #[cfg(target_arch = "wasm32")]
             ui_wake,
         })
+    }
+
+    /// Disconnects the session, sets alive to false, and signals the protocol to stop.
+    pub fn disconnect(&self) {
+        self.alive.store(false, Ordering::Relaxed);
+        if let Ok(mut proto) = self.protocol.lock() {
+            proto.disconnect();
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -259,7 +265,16 @@ impl KeyboardSession {
             write_support,
             supports_live_layout_switching: false,
             action_filter: None,
+            protocol: Arc::new(Mutex::new(Box::new(
+                crate::test_utils::TestProtocol::default(),
+            ))),
         }
+    }
+}
+
+impl Drop for KeyboardSession {
+    fn drop(&mut self) {
+        self.disconnect();
     }
 }
 

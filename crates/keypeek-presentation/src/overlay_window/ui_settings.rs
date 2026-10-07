@@ -87,11 +87,11 @@ impl DesktopOverlayApp {
                 .spacing([20.0, 10.0])
                 .show(ui, |ui| {
                     ui.label("Device");
-                    ui.add_enabled_ui(can_select, |ui| {
-                        ui.horizontal(|ui| {
-                            let combo_width =
-                                (ui.available_width() - RIGHT_COLUMN_WIDTH - control_spacing)
-                                    .max(120.0);
+                    ui.horizontal(|ui| {
+                        let combo_width =
+                            (ui.available_width() - RIGHT_COLUMN_WIDTH - control_spacing)
+                                .max(120.0);
+                        ui.add_enabled_ui(can_select, |ui| {
                             egui::ComboBox::from_id_salt("device_combo")
                                 .width(combo_width)
                                 .selected_text(selected_device_text.clone())
@@ -112,31 +112,38 @@ impl DesktopOverlayApp {
                                         ui.weak("No devices found");
                                     }
                                 });
+                        });
 
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(RIGHT_COLUMN_WIDTH, 20.0),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    let connect_in_progress = self.connection_mgr.is_connecting();
-                                    let can_connect = can_select
-                                        && !connect_in_progress
-                                        && self.connection_mgr.selected_device_index().is_some();
-                                    let button_label =
-                                        self.connection_mgr.state().connect_button_label();
-                                    ui.add_enabled_ui(can_connect, |ui| {
-                                        if ui
-                                            .add_sized(
-                                                [RIGHT_COLUMN_WIDTH, 20.0],
-                                                egui::Button::new(button_label),
-                                            )
-                                            .clicked()
-                                        {
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(RIGHT_COLUMN_WIDTH, 20.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                let is_active = self.connection_mgr.is_connected()
+                                    || self.connection_mgr.is_reconnecting();
+                                let can_click = is_active
+                                    || (can_select
+                                        && !self.connection_mgr.is_connecting()
+                                        && self.connection_mgr.selected_device_index().is_some());
+                                let button_label =
+                                    self.connection_mgr.state().connect_button_label();
+
+                                ui.add_enabled_ui(can_click, |ui| {
+                                    if ui
+                                        .add_sized(
+                                            [RIGHT_COLUMN_WIDTH, 20.0],
+                                            egui::Button::new(button_label),
+                                        )
+                                        .clicked()
+                                    {
+                                        if is_active {
+                                            self.disconnect_from_ui();
+                                        } else {
                                             self.connect_from_ui();
                                         }
-                                    });
-                                },
-                            );
-                        });
+                                    }
+                                });
+                            },
+                        );
                     });
                     ui.end_row();
 

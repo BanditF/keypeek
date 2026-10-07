@@ -164,7 +164,8 @@ impl ConnectionState {
 
     pub fn connect_button_label(&self) -> String {
         match self {
-            Self::Reconnecting { attempt, .. } => format!("Reconnecting ({attempt})..."),
+            Self::Connected { .. } => "Disconnect".to_string(),
+            Self::Reconnecting { .. } => "Cancel".to_string(),
             Self::Connecting => "Connecting...".to_string(),
             Self::Locked { .. } => "Locked".to_string(),
             _ => "Connect".to_string(),
@@ -545,9 +546,14 @@ impl DeviceConnectionManager {
     }
 
     pub fn disconnect(&mut self) {
+        if let Some(keyboard) = self.connected_keyboard() {
+            keyboard.disconnect();
+        }
         self.state = ConnectionState::Disconnected;
         self.pending_connect = None;
         self.reopen = None;
+        self.last_spec = None;
+        self.preferred_layout_name = None;
         self.reconnect_attempt = 0;
     }
 }
@@ -739,5 +745,45 @@ mod tests {
         assert_eq!(idx2, 1);
         assert_eq!(mgr.available_devices().len(), 2);
         assert_eq!(mgr.available_devices()[1].base_name, "Updated Device");
+    }
+
+    #[test]
+    fn test_disconnect_and_switch_device() {
+        let dev1 = sample_device(false);
+        let mut dev2 = sample_device(false);
+        dev2.base_name = "Second Keyboard".to_string();
+        dev2.pid = 0x9999;
+
+        let mut mgr = DeviceConnectionManager::new(vec![dev1, dev2], dummy_wake());
+        mgr.select_device(0);
+
+        let kbd1 = Arc::new(crate::test_utils::create_test_keyboard());
+        let bundle = crate::firmware::bundle_for_spec(&crate::test_utils::test_spec());
+        let profile = bundle.create_profile();
+
+        mgr.set_connected(Arc::clone(&kbd1), Arc::clone(&profile), None);
+        assert!(mgr.is_connected());
+        assert!(!mgr.can_select_device());
+        assert_eq!(mgr.state().connect_button_label(), "Disconnect");
+        assert!(kbd1.is_alive());
+
+        // Disconnect from current device
+        mgr.disconnect();
+        assert!(mgr.is_disconnected());
+        assert!(mgr.can_select_device());
+        assert_eq!(mgr.state().connect_button_label(), "Connect");
+        assert!(!kbd1.is_alive());
+
+        // Select second device from dropdown and connect
+        mgr.select_device(1);
+        assert_eq!(mgr.selected_device_index(), Some(1));
+        assert_eq!(mgr.selected_device().unwrap().base_name, "Second Keyboard");
+
+        let kbd2 = Arc::new(crate::test_utils::create_test_keyboard());
+        mgr.set_connected(Arc::clone(&kbd2), profile, None);
+        assert!(mgr.is_connected());
+        assert!(!mgr.can_select_device());
+        assert_eq!(mgr.state().connect_button_label(), "Disconnect");
+        assert!(kbd2.is_alive());
     }
 }

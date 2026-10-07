@@ -4,7 +4,7 @@ use crate::protocols::pump_hid_reader;
 use crate::protocols::ActionFilter;
 #[cfg(any(feature = "hidapi", test))]
 use crate::protocols::RawHidTransport;
-use crate::protocols::{DeviceError, DeviceEvent, KeyboardProtocol, WriteSupport};
+use crate::protocols::{DeviceError, DeviceEvent, KeyboardProtocol, StopSignal, WriteSupport};
 use keypeek_core::{KeySpec, KeyboardDefinition, KeymapSnapshot, LayerInfo};
 #[cfg(feature = "hidapi")]
 use qmk_via_api::api::KeyboardApi;
@@ -81,6 +81,7 @@ pub fn qmk_subscribe_events(
     api: Arc<Mutex<KeyboardApi>>,
     vid: u16,
     pid: u16,
+    stop_signal: StopSignal,
 ) -> Result<QmkSubscription, DeviceError> {
     // 1. Start keepalive loop if subscription interface is available
     let keepalive = RawHidSubscription::open(vid, pid)?.map(|mut sender| {
@@ -111,6 +112,7 @@ pub fn qmk_subscribe_events(
             },
             event_tx,
             "QMK device disconnected",
+            stop_signal,
         );
     });
 
@@ -214,6 +216,13 @@ pub struct QmkProtocol {
     features: QmkFeatures,
     event_rx: Mutex<Option<mpsc::Receiver<DeviceEvent>>>,
     _keepalive: Option<mpsc::Sender<()>>,
+    stop_signal: StopSignal,
+}
+
+impl Drop for QmkProtocol {
+    fn drop(&mut self) {
+        self.stop_signal.stop();
+    }
 }
 
 #[cfg(feature = "hidapi")]
@@ -224,8 +233,14 @@ impl QmkProtocol {
             actions: vec![vec![vec![None; definition.cols]; definition.rows]; 4],
         });
         let api = Arc::new(Mutex::new(api));
-        let subscription =
-            qmk_subscribe_events(Arc::clone(&api), definition.vid, definition.pid).ok();
+        let stop_signal = StopSignal::new();
+        let subscription = qmk_subscribe_events(
+            Arc::clone(&api),
+            definition.vid,
+            definition.pid,
+            stop_signal.clone(),
+        )
+        .ok();
 
         let (event_rx, keepalive) = match subscription {
             Some(sub) => (Some(sub.events), sub.keepalive),
@@ -239,6 +254,7 @@ impl QmkProtocol {
             features,
             event_rx: Mutex::new(event_rx),
             _keepalive: keepalive,
+            stop_signal,
         }
     }
 }
@@ -260,11 +276,16 @@ impl QmkProtocol {
             features,
             event_rx: Mutex::new(Some(event_rx)),
             _keepalive: None,
+            stop_signal: StopSignal::new(),
         }
     }
 }
 
 impl KeyboardProtocol for QmkProtocol {
+    fn disconnect(&mut self) {
+        self.stop_signal.stop();
+    }
+
     fn get_layout_definition(&self) -> &KeyboardDefinition {
         &self.definition
     }

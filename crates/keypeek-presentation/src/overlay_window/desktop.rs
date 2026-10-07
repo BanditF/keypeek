@@ -88,14 +88,21 @@ impl DesktopOverlayApp {
                 self.pick_layout_file();
             }
             ConnectOutcome::AlreadyConnected => {
-                self.ui.set_warning(
-                    "Switching device/protocol/layout requires app restart in this version.",
-                );
+                self.ui
+                    .set_warning("Already connected. Disconnect first to switch devices.");
             }
             ConnectOutcome::Failed(e) => {
                 self.ui.set_error(e);
             }
         }
+    }
+
+    /// Disconnects the active keyboard connection, tears down protocol session,
+    /// and closes the keymap editor.
+    pub fn disconnect_from_ui(&mut self) {
+        self.close_editor();
+        self.connection_mgr.disconnect();
+        self.ui.clear_alerts();
     }
 
     /// Requests the editor window to close, initiating a ZMK save first if changes

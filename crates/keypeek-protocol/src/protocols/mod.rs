@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
 pub mod transport;
@@ -125,18 +126,53 @@ pub fn decode_raw_hid_packet(response: &[u8]) -> Option<DeviceEvent> {
     }
 }
 
+/// Cancellation token used to stop asynchronous transport reader loops.
+#[derive(Clone, Default, Debug)]
+pub struct StopSignal(Arc<AtomicBool>);
+
+impl StopSignal {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    pub fn stop(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+impl From<Arc<AtomicBool>> for StopSignal {
+    fn from(inner: Arc<AtomicBool>) -> Self {
+        Self(inner)
+    }
+}
+
 /// Pumps raw HID responses through `decode_raw_hid_packet` and sends resulting `DeviceEvent`s.
 /// Retries on transient errors and emits `DeviceEvent::Disconnected` after consecutive failures.
-pub fn pump_hid_reader<F>(mut read: F, event_tx: mpsc::Sender<DeviceEvent>, disconnect_msg: &str)
-where
+/// Stops cleanly when `stop_signal` is stopped.
+pub fn pump_hid_reader<F>(
+    mut read: F,
+    event_tx: mpsc::Sender<DeviceEvent>,
+    disconnect_msg: &str,
+    stop_signal: StopSignal,
+) where
     F: FnMut() -> Result<Option<Vec<u8>>, String>,
 {
     const MAX_CONSECUTIVE_ERRORS: u32 = 5;
     let mut consecutive_errors: u32 = 0;
     loop {
+        if stop_signal.is_stopped() {
+            break;
+        }
         match read() {
             Ok(Some(bytes)) => {
                 consecutive_errors = 0;
+                if stop_signal.is_stopped() {
+                    break;
+                }
                 if let Some(event) = decode_raw_hid_packet(&bytes) {
                     if event_tx.send(event).is_err() {
                         break;
@@ -147,6 +183,9 @@ where
                 // Timeout / no data, continue
             }
             Err(_) => {
+                if stop_signal.is_stopped() {
+                    break;
+                }
                 consecutive_errors += 1;
                 if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
                     let _ = event_tx.send(DeviceEvent::Disconnected(disconnect_msg.to_string()));
@@ -181,6 +220,9 @@ pub trait KeyboardProtocol: Send {
 
     /// Subscribes to layer-state and key-press events from the device.
     fn subscribe_events(&mut self) -> Result<mpsc::Receiver<DeviceEvent>, DeviceError>;
+
+    /// Signals the protocol to stop background reading and release hardware handles.
+    fn disconnect(&mut self) {}
 
     fn write_support(&self) -> WriteSupport {
         WriteSupport::None

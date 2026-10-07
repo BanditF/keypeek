@@ -58,7 +58,7 @@ impl RawHidTransport for MockHidTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocols::{pump_hid_reader, DeviceEvent};
+    use crate::protocols::{pump_hid_reader, DeviceEvent, StopSignal};
     use std::sync::mpsc;
     use std::thread;
 
@@ -105,6 +105,7 @@ mod tests {
         transport.push_incoming(vec![0xF1, 1, 2, 1]);
 
         let (tx, rx) = mpsc::channel();
+        let stop_signal = StopSignal::new();
         let handle = thread::spawn(move || {
             pump_hid_reader(
                 || {
@@ -116,6 +117,7 @@ mod tests {
                 },
                 tx,
                 "Disconnected",
+                stop_signal,
             );
         });
 
@@ -135,5 +137,23 @@ mod tests {
             DeviceEvent::Disconnected("Disconnected".to_string())
         );
         let _ = handle.join();
+    }
+
+    #[test]
+    fn mock_transport_pump_reader_stops_on_signal() {
+        let (tx, rx) = mpsc::channel();
+        let stop_signal = StopSignal::new();
+        let stop_clone = stop_signal.clone();
+
+        let handle = thread::spawn(move || {
+            pump_hid_reader(|| Ok(None), tx, "Disconnected", stop_clone);
+        });
+
+        // Set stop signal to true
+        stop_signal.stop();
+        let _ = handle.join();
+
+        // Channel should close without emitting any Disconnected event
+        assert!(rx.recv().is_err());
     }
 }

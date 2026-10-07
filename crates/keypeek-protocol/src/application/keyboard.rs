@@ -118,6 +118,10 @@ impl Keyboard {
         self.session.release_edit_lock();
     }
 
+    pub fn disconnect(&self) {
+        self.session.disconnect();
+    }
+
     // --- Domain delegations ---
 
     pub fn overlay_is_visible(&self, now: Instant) -> bool {

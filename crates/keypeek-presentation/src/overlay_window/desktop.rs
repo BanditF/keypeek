@@ -1,16 +1,10 @@
-//! Desktop application coordinator, window orchestration, and native integration.
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use web_time::Instant;
 
-use super::state::{SettingsState, UiState};
-use super::ui_overlay::OverlayView;
+use super::app_core::KeyPeekAppCore;
 use crate::overlay_host::OverlayHost;
 use crate::settings::SettingsStore;
-use keypeek_protocol::connection_manager::{
-    ConnectOutcome, ConnectionEvent, DeviceConnectionManager,
-};
+use keypeek_protocol::connection_manager::{ConnectOutcome, ConnectionEvent};
 use keypeek_protocol::{DiscoveredDevice, Keyboard, UiWake};
 
 /// Background clear color for desktop: transparent overlay or dimmed backdrop.
@@ -26,17 +20,27 @@ pub fn clear_color(is_any_window_open: bool) -> egui::Rgba {
 /// mouse passthrough, and native file dialogs.
 pub struct DesktopOverlayApp {
     pub(super) settings_requested: Arc<AtomicBool>,
-    pub(crate) ui: UiState,
-    pub(super) settings: SettingsState,
-    pub(super) settings_store: Arc<dyn SettingsStore>,
-    pub(crate) connection_mgr: DeviceConnectionManager,
-    pub(crate) editor: crate::keymap_editor::EditorState,
+    pub core: KeyPeekAppCore,
     pub(super) file_dialog: egui_file_dialog::FileDialog,
     pub(super) mouse_passthrough: Option<bool>,
 }
 
 pub type DesktopApp = DesktopOverlayApp;
 pub type OverlayApp = DesktopOverlayApp;
+
+impl std::ops::Deref for DesktopOverlayApp {
+    type Target = KeyPeekAppCore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
+
+impl std::ops::DerefMut for DesktopOverlayApp {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.core
+    }
+}
 
 impl DesktopOverlayApp {
     pub fn new(
@@ -45,19 +49,9 @@ impl DesktopOverlayApp {
         settings_store: Arc<dyn SettingsStore>,
         available_devices: Vec<DiscoveredDevice>,
     ) -> Self {
-        let base_settings = settings_store.load();
-
         Self {
             settings_requested,
-            ui: UiState {
-                settings_visible: true,
-                settings_error: None,
-                settings_warning: None,
-            },
-            settings: SettingsState::new(base_settings),
-            settings_store,
-            connection_mgr: DeviceConnectionManager::new(available_devices, ui_wake),
-            editor: crate::keymap_editor::EditorState::new(),
+            core: KeyPeekAppCore::new(ui_wake, settings_store, available_devices, true),
             file_dialog: egui_file_dialog::FileDialog::new(),
             mouse_passthrough: None,
         }
@@ -68,76 +62,17 @@ impl DesktopOverlayApp {
         clear_color(self.is_any_window_open())
     }
 
-    pub(crate) fn is_any_window_open(&self) -> bool {
-        self.ui.settings_visible || self.editor.is_open()
-    }
-
-    pub(crate) fn persist_settings(&self) {
-        if let Err(e) = self.settings_store.save(&self.settings.active) {
-            eprintln!("Failed to save settings: {e}");
-        }
-    }
-
     /// Initiates connection for the currently selected device in connection_mgr.
     pub fn connect_from_ui(&mut self) {
-        match self.connection_mgr.connect(self.settings.overlay_config()) {
-            ConnectOutcome::Started => {
-                self.ui.settings_error = None;
-            }
-            ConnectOutcome::RequiresLayoutFile => {
-                self.pick_layout_file();
-            }
-            ConnectOutcome::AlreadyConnected => {
-                self.ui
-                    .set_warning("Already connected. Disconnect first to switch devices.");
-            }
-            ConnectOutcome::Failed(e) => {
-                self.ui.set_error(e);
-            }
+        if self.core.connect_selected_device() == ConnectOutcome::RequiresLayoutFile {
+            self.pick_layout_file();
         }
     }
 
     /// Disconnects the active keyboard connection, tears down protocol session,
     /// and closes the keymap editor.
     pub fn disconnect_from_ui(&mut self) {
-        self.close_editor();
-        self.connection_mgr.disconnect();
-        self.ui.clear_alerts();
-    }
-
-    /// Requests the editor window to close, initiating a ZMK save first if changes
-    /// are pending; otherwise closes immediately.
-    #[allow(dead_code)]
-    pub(crate) fn request_close_editor(&mut self) -> bool {
-        self.editor
-            .handle_close_request(self.connection_mgr.connected_keyboard().as_deref())
-    }
-
-    /// Closes the editor window and releases any device write lock.
-    pub(crate) fn close_editor(&mut self) {
-        self.editor
-            .close(self.connection_mgr.connected_keyboard().as_deref());
-    }
-
-    /// Switches the active keyboard layout and saves the preferred layout name.
-    pub(crate) fn switch_layout(&mut self, name: &str) {
-        if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-            if let Err(e) = keyboard.switch_layout(name) {
-                self.ui.set_error(e);
-            } else {
-                self.connection_mgr
-                    .set_preferred_layout_name(Some(name.to_string()));
-            }
-        }
-    }
-
-    /// Commits modified draft settings to active settings and updates connected keyboard config.
-    pub(super) fn sync_visual_settings(&mut self) {
-        if self.settings.commit_draft() {
-            if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-                keyboard.set_config(self.settings.overlay_config());
-            }
-        }
+        self.core.disconnect_from_ui();
     }
 
     pub(super) fn get_anchor_params(&self) -> (egui::Align2, egui::Vec2) {
@@ -148,11 +83,7 @@ impl DesktopOverlayApp {
     }
 
     pub(super) fn overlay_visible(&self) -> bool {
-        if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-            self.is_any_window_open() || keyboard.overlay_is_visible(Instant::now())
-        } else {
-            false
-        }
+        self.core.is_overlay_visible()
     }
 
     /// Opens the native file dialog to pick a layout file.
@@ -171,67 +102,27 @@ impl DesktopOverlayApp {
         self.mouse_passthrough = Some(mouse_passthrough);
     }
 
-    /// Schedules a repaint when the overlay visibility timer expires.
-    fn schedule_overlay_repaint(&self, ctx: &egui::Context) {
-        if self.is_any_window_open() {
-            return;
-        }
-
-        let Some(keyboard) = self.connection_mgr.connected_keyboard() else {
-            return;
-        };
-
-        if let Some(delay) = keyboard.overlay_changes_in(Instant::now()) {
-            ctx.request_repaint_after(delay);
-        }
-    }
-
     /// Updates state, handles background tasks, and processes input before drawing.
     pub fn update(&mut self, ctx: &egui::Context, host: &mut dyn OverlayHost) {
-        if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-            keyboard.poll();
-        }
-
         if self.settings_requested.swap(false, Ordering::Relaxed) {
-            self.ui.settings_visible = true;
+            self.core.ui.settings_visible = true;
         }
 
-        if let Some(event) = self
-            .connection_mgr
-            .update(self.settings.overlay_config(), |d| {
-                ctx.request_repaint_after(d)
-            })
-        {
-            match event {
-                ConnectionEvent::Connected => {
-                    self.ui.clear_alerts();
-                    self.sync_visual_settings();
-                }
-                ConnectionEvent::ConnectionFailed(e) => {
-                    self.ui.set_error(e);
-                }
-                ConnectionEvent::Disconnected => {
-                    self.close_editor();
-                }
-                ConnectionEvent::DeviceLocked(dev) => {
-                    self.ui.set_error(dev.lock_message());
-                }
-                ConnectionEvent::RequiresLayoutFile(_) => {
-                    self.pick_layout_file();
-                }
-            }
+        if let Some(ConnectionEvent::RequiresLayoutFile(_)) = self.core.update_connection(ctx) {
+            self.pick_layout_file();
         }
 
         self.file_dialog.update(ctx);
 
         if let Some(path) = self.file_dialog.take_picked() {
-            self.connection_mgr
+            self.core
+                .connection_mgr
                 .set_layout_file_path(path.to_string_lossy().to_string());
             self.connect_from_ui();
-        } else if self.file_dialog.state() == &egui_file_dialog::DialogState::Cancelled {
-            if self.connection_mgr.state().is_requires_layout_file() {
-                self.connection_mgr.disconnect();
-            }
+        } else if self.file_dialog.state() == &egui_file_dialog::DialogState::Cancelled
+            && self.core.connection_mgr.state().is_requires_layout_file()
+        {
+            self.core.connection_mgr.disconnect();
         }
 
         self.sync_mouse_passthrough(host);
@@ -260,7 +151,7 @@ impl DesktopOverlayApp {
         let anchor_params = self.get_anchor_params();
         let mut window_open = visible;
         let hit_test_enabled = self.is_any_window_open();
-        let size = self.settings.active.size as f32;
+        let size = self.core.settings.active.size as f32;
 
         egui::Window::new("KeyPeek")
             .open(&mut window_open)
@@ -271,39 +162,27 @@ impl DesktopOverlayApp {
             .fade_out(true)
             .title_bar(false)
             .show(ctx, |ui| {
-                OverlayView::new(
-                    keyboard,
-                    &mut self.editor,
-                    &self.settings.active,
-                    size,
-                    hit_test_enabled,
-                )
-                .show(ui);
+                self.core
+                    .overlay_view(keyboard, size, hit_test_enabled)
+                    .show(ui);
             });
     }
 
     /// Renders desktop windows: overlay, key editor, settings, and notices.
     pub fn render(&mut self, ctx: &egui::Context, host: &mut dyn OverlayHost) {
-        if !self.connection_mgr.is_connected() && self.editor.is_open() {
-            self.close_editor();
-        }
-
-        let connected = self.connection_mgr.connected_pair();
+        let connected = self.core.connection_mgr.connected_pair();
         if let Some((keyboard, profile)) = &connected {
             self.draw_overlay_window(ctx, keyboard, self.overlay_visible());
-            if self.editor.is_open() {
-                let style = self.settings.paint_style(crate::keymap_editor::KEY_UNIT);
-                self.editor
-                    .draw_window(ctx, keyboard, profile.as_ref(), &style);
-            }
+            self.core
+                .draw_editor_window(ctx, keyboard, profile.as_ref());
         }
 
         if self.ui.settings_visible {
             self.draw_settings_window(ctx, host);
         }
 
-        Self::message_window(ctx, "Error", &mut self.ui.settings_error);
-        Self::message_window(ctx, "Notice", &mut self.ui.settings_warning);
+        Self::message_window(ctx, "Error", &mut self.core.ui.settings_error);
+        Self::message_window(ctx, "Notice", &mut self.core.ui.settings_warning);
     }
 
     /// Primary entry point called by the desktop platform runner.

@@ -1,17 +1,11 @@
-//! Web UI chrome, device pairing, and event orchestration.
-
 use std::sync::mpsc;
 use std::sync::Arc;
-use web_time::Instant;
 
 use keypeek_presentation::{
-    github_link,
-    keymap_editor::{EditorState, KEY_UNIT},
-    version_link, LegendMode, OverlayHost, OverlayView, SettingsState, SettingsStore, UiState,
+    github_link, keymap_editor::KEY_UNIT, version_link, KeyPeekAppCore, LegendMode, OverlayHost,
+    SettingsStore,
 };
-use keypeek_protocol::connection_manager::{
-    ConnectionEvent, ConnectionState, DeviceConnectionManager,
-};
+use keypeek_protocol::connection_manager::{ConnectionEvent, ConnectionState};
 use keypeek_protocol::platform::web::ConnectedWebDevice;
 use keypeek_protocol::platform::web_hid::{
     connect_via_with_layout, is_web_hid_supported, request_and_connect_device,
@@ -28,11 +22,7 @@ pub fn clear_color(visuals: &egui::Visuals) -> egui::Rgba {
 /// Top-level coordinator for browser execution: WebHID/WebSerial pairing,
 /// single-canvas layout, responsive sidebar editor, and web local storage.
 pub struct WebOverlayApp {
-    pub(crate) ui: UiState,
-    pub(crate) settings: SettingsState,
-    pub(super) settings_store: Arc<dyn SettingsStore>,
-    pub(crate) connection_mgr: DeviceConnectionManager,
-    pub(crate) editor: EditorState,
+    pub core: KeyPeekAppCore,
 
     pub(crate) pairing_rx: Option<mpsc::Receiver<Result<Option<WebConnectOutcome>, DeviceError>>>,
     pub(crate) pending_via: Option<(DiscoveredDevice, Arc<WebHidTransport>)>,
@@ -45,6 +35,20 @@ pub struct WebOverlayApp {
 
 pub type OverlayApp = WebOverlayApp;
 
+impl std::ops::Deref for WebOverlayApp {
+    type Target = KeyPeekAppCore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.core
+    }
+}
+
+impl std::ops::DerefMut for WebOverlayApp {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.core
+    }
+}
+
 impl WebOverlayApp {
     pub fn new(ui_wake: UiWake, settings_store: Arc<dyn SettingsStore>) -> Self {
         Self::with_devices(ui_wake, settings_store, Vec::new())
@@ -55,18 +59,8 @@ impl WebOverlayApp {
         settings_store: Arc<dyn SettingsStore>,
         available_devices: Vec<DiscoveredDevice>,
     ) -> Self {
-        let base_settings = settings_store.load();
-
         Self {
-            ui: UiState {
-                settings_visible: false,
-                settings_error: None,
-                settings_warning: None,
-            },
-            settings: SettingsState::new(base_settings),
-            settings_store,
-            connection_mgr: DeviceConnectionManager::new(available_devices, ui_wake),
-            editor: EditorState::new(),
+            core: KeyPeekAppCore::new(ui_wake, settings_store, available_devices, false),
             pairing_rx: None,
             pending_via: None,
             web_file_rx: None,
@@ -82,35 +76,17 @@ impl WebOverlayApp {
         clear_color(visuals)
     }
 
-    pub(crate) fn is_any_window_open(&self) -> bool {
-        self.editor.is_open()
-    }
-
     /// Returns the currently pinned layer (editor target or manual web selection),
     /// or `None` if following hardware (Auto mode).
     pub(crate) fn effective_pinned_layer(&self) -> Option<usize> {
         self.editor.pinned_layer().or(self.selected_layer)
     }
 
-    pub(crate) fn persist_settings(&self) {
-        if let Err(e) = self.settings_store.save(&self.settings.active) {
-            eprintln!("Failed to save settings: {e}");
-        }
-    }
-
-    /// Closes the editor window and releases any device write lock.
-    pub(crate) fn close_editor(&mut self) {
-        self.editor
-            .close(self.connection_mgr.connected_keyboard().as_deref());
-    }
-
     /// Disconnects the active keyboard connection, tears down protocol session,
     /// and closes the keymap editor.
     pub fn disconnect_from_ui(&mut self) {
-        self.close_editor();
-        self.connection_mgr.disconnect();
+        self.core.disconnect_from_ui();
         self.clear_transient_web_state();
-        self.ui.clear_alerts();
     }
 
     /// Clears transient pairing, telemetry, and pending file/device resources.
@@ -121,81 +97,17 @@ impl WebOverlayApp {
         self.web_file_rx = None;
     }
 
-    /// Requests the editor window to close, initiating a ZMK save first if changes
-    /// are pending; otherwise closes immediately.
-    #[allow(dead_code)]
-    pub(crate) fn request_close_editor(&mut self) -> bool {
-        self.editor
-            .handle_close_request(self.connection_mgr.connected_keyboard().as_deref())
-    }
-
-    /// Switches the active keyboard layout and saves the preferred layout name.
-    pub(crate) fn switch_layout(&mut self, name: &str) {
-        if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-            if let Err(e) = keyboard.switch_layout(name) {
-                self.ui.set_error(e);
-            } else {
-                self.connection_mgr
-                    .set_preferred_layout_name(Some(name.to_string()));
-            }
-        }
-    }
-
-    /// Commits modified draft settings to active settings and updates connected keyboard config.
-    pub(super) fn sync_visual_settings(&mut self) {
-        if self.settings.commit_draft() {
-            if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-                keyboard.set_config(self.settings.overlay_config());
-            }
-            self.persist_settings();
-        }
-    }
-
-    /// Schedules a repaint when the overlay visibility timer expires.
-    fn schedule_overlay_repaint(&self, ctx: &egui::Context) {
-        if self.is_any_window_open() {
-            return;
-        }
-
-        let Some(keyboard) = self.connection_mgr.connected_keyboard() else {
-            return;
-        };
-
-        if let Some(delay) = keyboard.overlay_changes_in(Instant::now()) {
-            ctx.request_repaint_after(delay);
-        }
-    }
-
     /// Web update step: polls pairing channels, telemetry channels, and file picker channels.
     pub fn update(&mut self, ctx: &egui::Context, _host: &mut dyn OverlayHost) {
-        if let Some(keyboard) = self.connection_mgr.connected_keyboard() {
-            keyboard.poll();
-        }
-
-        if let Some(event) = self
-            .connection_mgr
-            .update(self.settings.overlay_config(), |d| {
-                ctx.request_repaint_after(d)
-            })
-        {
+        if let Some(event) = self.core.update_connection(ctx) {
             match event {
-                ConnectionEvent::Connected => {
-                    self.ui.clear_alerts();
-                    self.sync_visual_settings();
-                }
-                ConnectionEvent::ConnectionFailed(e) => {
-                    self.ui.set_error(e);
-                }
                 ConnectionEvent::Disconnected => {
-                    self.close_editor();
                     self.clear_transient_web_state();
-                }
-                ConnectionEvent::DeviceLocked(dev) => {
-                    self.ui.set_error(dev.lock_message());
                 }
                 ConnectionEvent::RequiresLayoutFile(_) => {
                     self.trigger_web_layout_file_picker();
                 }
+                _ => {}
             }
         }
 
@@ -280,8 +192,7 @@ impl WebOverlayApp {
         self.connection_mgr.select_device(idx);
         self.connection_mgr
             .set_connected(connected.keyboard, connected.profile, None);
-        self.ui.settings_error = None;
-        self.ui.settings_warning = None;
+        self.ui.clear_alerts();
         self.clear_transient_web_state();
     }
 
@@ -375,15 +286,10 @@ impl WebOverlayApp {
 
                 ui.vertical_centered(|ui| {
                     let pinned_layer = self.effective_pinned_layer();
-                    OverlayView::new(
-                        keyboard,
-                        &mut self.editor,
-                        &self.settings.active,
-                        key_size,
-                        true,
-                    )
-                    .with_pinned_layer(pinned_layer)
-                    .show(ui);
+                    self.core
+                        .overlay_view(keyboard, key_size, true)
+                        .with_pinned_layer(pinned_layer)
+                        .show(ui);
                 });
 
                 if let Some(target) = self.editor.target {
@@ -402,11 +308,8 @@ impl WebOverlayApp {
 
         // 2. Resizable left sidebar for keymap editor (if open and connected)
         if let Some((keyboard, profile)) = &connected {
-            if self.editor.is_open() {
-                let style = self.settings.paint_style(KEY_UNIT);
-                self.editor
-                    .draw_sidebar(ui, keyboard, profile.as_ref(), &style);
-            }
+            self.core
+                .draw_editor_sidebar(ui, keyboard, profile.as_ref());
         }
 
         // 3. Bottom panel of the main panel for layer buttons and legend mode
@@ -770,9 +673,6 @@ impl WebOverlayApp {
     pub fn ui(&mut self, ui: &mut egui::Ui, host: &mut dyn OverlayHost) {
         let ctx = ui.ctx().clone();
         self.update(&ctx, host);
-        if !self.connection_mgr.is_connected() && self.editor.is_open() {
-            self.close_editor();
-        }
         self.render_web(ui);
         self.schedule_overlay_repaint(&ctx);
     }

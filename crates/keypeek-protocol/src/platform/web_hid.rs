@@ -280,9 +280,10 @@ impl WebHidTransport {
     /// Closes the WebHID transport, removing the `inputreport` listener and closing the underlying device.
     pub fn close(&mut self) {
         if let Some(closure) = self.inputreport_closure.take() {
-            let _ = self
-                .device
-                .remove_event_listener_with_callback("inputreport", closure.as_ref().unchecked_ref());
+            let _ = self.device.remove_event_listener_with_callback(
+                "inputreport",
+                closure.as_ref().unchecked_ref(),
+            );
         }
         if self.device.opened() {
             let promise = self.device.close();
@@ -670,10 +671,10 @@ pub fn trigger_web_file_picker(
         wake_cancel.request_repaint();
     });
 
-    let res_change = input
-        .add_event_listener_with_callback("change", on_change.as_ref().unchecked_ref());
-    let res_cancel = input
-        .add_event_listener_with_callback("cancel", on_cancel.as_ref().unchecked_ref());
+    let res_change =
+        input.add_event_listener_with_callback("change", on_change.as_ref().unchecked_ref());
+    let res_cancel =
+        input.add_event_listener_with_callback("cancel", on_cancel.as_ref().unchecked_ref());
 
     if res_change.is_err() || res_cancel.is_err() {
         return;

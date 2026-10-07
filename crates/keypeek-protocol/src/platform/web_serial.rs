@@ -122,6 +122,7 @@ type ResponseMap = HashMap<u32, futures_channel::oneshot::Sender<studio::Request
 #[cfg(target_arch = "wasm32")]
 pub struct WebSerialTransport {
     port: web_sys::SerialPort,
+    reader: web_sys::ReadableStreamDefaultReader,
     alive: Arc<AtomicBool>,
     next_request_id: AtomicU32,
     pending_requests: Arc<Mutex<ResponseMap>>,
@@ -174,11 +175,13 @@ impl WebSerialTransport {
         let reader_pending = Arc::clone(&pending_requests);
         let wake_clone = ui_wake.clone();
         let event_tx_clone = event_tx;
+        let reader_for_loop = reader.clone();
+        let port_for_loop = port.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
             let mut decoder = FrameDecoder::new();
             while reader_alive.load(Ordering::Relaxed) {
-                let promise = reader.read();
+                let promise = reader_for_loop.read();
                 match wasm_bindgen_futures::JsFuture::from(promise).await {
                     Ok(result) => {
                         let done = js_sys::Reflect::get(&result, &JsValue::from_str("done"))
@@ -232,11 +235,14 @@ impl WebSerialTransport {
                     }
                 }
             }
-            reader.release_lock();
+            reader_for_loop.release_lock();
+            let close_promise = port_for_loop.close();
+            let _ = wasm_bindgen_futures::JsFuture::from(close_promise).await;
         });
 
         Ok(Self {
             port,
+            reader,
             alive,
             next_request_id,
             pending_requests,
@@ -308,12 +314,22 @@ impl WebSerialTransport {
             "Timed out waiting for response to ZMK RPC request {request_id}"
         )))
     }
+
+    /// Cancels active serial reads and closes the underlying serial port.
+    pub fn close(&self) {
+        if self.alive.swap(false, Ordering::Relaxed) {
+            let cancel_promise = self.reader.cancel();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = wasm_bindgen_futures::JsFuture::from(cancel_promise).await;
+            });
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
 impl Drop for WebSerialTransport {
     fn drop(&mut self) {
-        self.alive.store(false, Ordering::Relaxed);
+        self.close();
     }
 }
 

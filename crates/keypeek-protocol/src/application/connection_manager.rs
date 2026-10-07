@@ -461,19 +461,23 @@ impl DeviceConnectionManager {
     ) -> Option<ConnectionEvent> {
         let mut event = None;
 
-        // 1. Detect dropped connection
+        // Detect dropped connection
         if let ConnectionState::Connected { keyboard, .. } = &self.state {
             if !keyboard.is_alive() {
-                self.reconnect_attempt = 1;
-                self.state = ConnectionState::Reconnecting {
-                    attempt: 1,
-                    next_try: Instant::now(),
-                };
+                if self.last_spec.is_some() {
+                    self.reconnect_attempt = 1;
+                    self.state = ConnectionState::Reconnecting {
+                        attempt: 1,
+                        next_try: Instant::now(),
+                    };
+                } else {
+                    self.state = ConnectionState::Disconnected;
+                }
                 event = Some(ConnectionEvent::Disconnected);
             }
         }
 
-        // 2. Poll pending connection task
+        // Poll pending connection task
         if let Some(task) = &self.pending_connect {
             match task.try_finish() {
                 Some(Ok(connected)) => {
@@ -507,7 +511,7 @@ impl DeviceConnectionManager {
             }
         }
 
-        // 3. Drive reconnection if due
+        // Drive reconnection if due
         if let ConnectionState::Reconnecting { next_try, .. } = self.state {
             if self.pending_connect.is_none() {
                 let now = Instant::now();

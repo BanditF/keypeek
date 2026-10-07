@@ -163,7 +163,7 @@ pub async fn connect_web_zmk(
     vid: u16,
     pid: u16,
     event_rx: mpsc::Receiver<DeviceEvent>,
-    _hid_transport: Option<crate::platform::web_hid::WebHidTransport>,
+    telemetry_hid: Option<crate::platform::web_hid::WebHidTransport>,
 ) -> Result<ZmkProtocol, DeviceError> {
     let lock_state = query_lock_state(&transport).await?;
     if lock_state == LockState::ZmkStudioCoreLockStateLocked {
@@ -228,6 +228,7 @@ pub async fn connect_web_zmk(
     let backend = Box::new(super::driver::WebZmkBackend::new(
         transport,
         behavior_id_by_role,
+        telemetry_hid,
     ));
 
     Ok(ZmkProtocol::new_web(Arc::new(layout), backend, event_rx))

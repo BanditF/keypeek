@@ -89,6 +89,7 @@ pub struct WebHidTransport {
     event_rx: Mutex<Option<mpsc::Receiver<DeviceEvent>>>,
     response_slot: Arc<Mutex<ResponseSlot>>,
     command_lock: futures_util::lock::Mutex<()>,
+    inputreport_closure: Option<Closure<dyn FnMut(web_sys::HidInputReportEvent)>>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -126,13 +127,12 @@ impl WebHidTransport {
                 DeviceError::Transport(format!("Failed to attach inputreport listener: {e:?}"))
             })?;
 
-        closure.forget();
-
         Ok(Self {
             device,
             event_rx: Mutex::new(None),
             response_slot,
             command_lock: futures_util::lock::Mutex::new(()),
+            inputreport_closure: Some(closure),
         })
     }
 
@@ -275,6 +275,28 @@ impl WebHidTransport {
     /// Sends a VIA command and awaits the corresponding response (with a 1000ms timeout).
     pub async fn command(&self, command_id: u8, payload: &[u8]) -> Result<Vec<u8>, DeviceError> {
         self.command_timeout(command_id, payload, 1000).await
+    }
+
+    /// Closes the WebHID transport, removing the `inputreport` listener and closing the underlying device.
+    pub fn close(&mut self) {
+        if let Some(closure) = self.inputreport_closure.take() {
+            let _ = self
+                .device
+                .remove_event_listener_with_callback("inputreport", closure.as_ref().unchecked_ref());
+        }
+        if self.device.opened() {
+            let promise = self.device.close();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+            });
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for WebHidTransport {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -547,6 +569,39 @@ pub async fn connect_via_with_layout(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+struct FilePickerState {
+    input: web_sys::HtmlInputElement,
+    on_change: Option<Closure<dyn FnMut()>>,
+    on_cancel: Option<Closure<dyn FnMut()>>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl FilePickerState {
+    fn schedule_cleanup(state: &std::rc::Rc<std::cell::RefCell<Option<Self>>>) {
+        let state_ref = std::rc::Rc::clone(state);
+        wasm_bindgen_futures::spawn_local(async move {
+            state_ref.borrow_mut().take();
+        });
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for FilePickerState {
+    fn drop(&mut self) {
+        if let Some(on_change) = self.on_change.take() {
+            let _ = self
+                .input
+                .remove_event_listener_with_callback("change", on_change.as_ref().unchecked_ref());
+        }
+        if let Some(on_cancel) = self.on_cancel.take() {
+            let _ = self
+                .input
+                .remove_event_listener_with_callback("cancel", on_cancel.as_ref().unchecked_ref());
+        }
+    }
+}
+
 /// Opens the browser's native file chooser and sends (filename, text_content) to tx.
 #[cfg(target_arch = "wasm32")]
 pub fn trigger_web_file_picker(
@@ -572,16 +627,23 @@ pub fn trigger_web_file_picker(
     input.set_type("file");
     let _ = input.set_attribute("accept", ".json,application/json");
 
+    let state: std::rc::Rc<std::cell::RefCell<Option<FilePickerState>>> =
+        std::rc::Rc::new(std::cell::RefCell::new(None));
+
     let input_clone = input.clone();
     let tx_clone = tx.clone();
-    let wake = ui_wake.clone();
-    let closure = Closure::<dyn FnMut()>::new(move || {
+    let wake_change = ui_wake.clone();
+    let state_for_change = std::rc::Rc::clone(&state);
+
+    let on_change = Closure::<dyn FnMut()>::new(move || {
+        FilePickerState::schedule_cleanup(&state_for_change);
+
         if let Some(files) = input_clone.files() {
             if let Some(file) = files.get(0) {
                 let filename = file.name();
                 let promise = file.text();
                 let tx_inner = tx_clone.clone();
-                let wake_inner = wake.clone();
+                let wake_inner = wake_change.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     match wasm_bindgen_futures::JsFuture::from(promise).await {
                         Ok(js_val) => {
@@ -601,8 +663,28 @@ pub fn trigger_web_file_picker(
         }
     });
 
-    input.set_onchange(Some(closure.as_ref().unchecked_ref()));
-    closure.forget();
+    let wake_cancel = ui_wake;
+    let state_for_cancel = std::rc::Rc::clone(&state);
+    let on_cancel = Closure::<dyn FnMut()>::new(move || {
+        FilePickerState::schedule_cleanup(&state_for_cancel);
+        wake_cancel.request_repaint();
+    });
+
+    let res_change = input
+        .add_event_listener_with_callback("change", on_change.as_ref().unchecked_ref());
+    let res_cancel = input
+        .add_event_listener_with_callback("cancel", on_cancel.as_ref().unchecked_ref());
+
+    if res_change.is_err() || res_cancel.is_err() {
+        return;
+    }
+
+    *state.borrow_mut() = Some(FilePickerState {
+        input: input.clone(),
+        on_change: Some(on_change),
+        on_cancel: Some(on_cancel),
+    });
+
     input.click();
 }
 

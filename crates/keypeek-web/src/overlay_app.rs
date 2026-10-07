@@ -109,7 +109,16 @@ impl WebOverlayApp {
     pub fn disconnect_from_ui(&mut self) {
         self.close_editor();
         self.connection_mgr.disconnect();
+        self.clear_transient_web_state();
         self.ui.clear_alerts();
+    }
+
+    /// Clears transient pairing, telemetry, and pending file/device resources.
+    fn clear_transient_web_state(&mut self) {
+        self.pending_via = None;
+        self.pending_zmk_telemetry = None;
+        self.telemetry_hid = None;
+        self.web_file_rx = None;
     }
 
     /// Requests the editor window to close, initiating a ZMK save first if changes
@@ -179,6 +188,7 @@ impl WebOverlayApp {
                 }
                 ConnectionEvent::Disconnected => {
                     self.close_editor();
+                    self.clear_transient_web_state();
                 }
                 ConnectionEvent::DeviceLocked(dev) => {
                     self.ui.set_error(dev.lock_message());
@@ -272,7 +282,7 @@ impl WebOverlayApp {
             .set_connected(connected.keyboard, connected.profile, None);
         self.ui.settings_error = None;
         self.ui.settings_warning = None;
-        self.pending_via = None;
+        self.clear_transient_web_state();
     }
 
     /// Prompts user to pair a WebHID device.
@@ -703,9 +713,7 @@ impl WebOverlayApp {
             self.trigger_web_layout_file_picker();
         }
         if dismiss {
-            self.pending_via = None;
-            self.connection_mgr.disconnect();
-            self.ui.settings_error = None;
+            self.disconnect_from_ui();
         }
     }
 

@@ -101,6 +101,8 @@ impl ZmkBackend for NativeZmkBackend {
 pub struct WebZmkBackend {
     transport: Arc<crate::platform::web_serial::WebSerialTransport>,
     behavior_id_by_role: std::collections::HashMap<zmk_studio_api::BehaviorRole, u32>,
+    /// Companion WebHID transport kept alive for live layer/press telemetry during the session.
+    _telemetry_hid: Option<crate::platform::web_hid::WebHidTransport>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -108,10 +110,12 @@ impl WebZmkBackend {
     pub fn new(
         transport: Arc<crate::platform::web_serial::WebSerialTransport>,
         behavior_id_by_role: std::collections::HashMap<zmk_studio_api::BehaviorRole, u32>,
+        telemetry_hid: Option<crate::platform::web_hid::WebHidTransport>,
     ) -> Self {
         Self {
             transport,
             behavior_id_by_role,
+            _telemetry_hid: telemetry_hid,
         }
     }
 }

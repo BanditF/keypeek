@@ -4,11 +4,14 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use keypeek_presentation::{add_phosphor_to_fonts, MemorySettingsStore, OverlayHost};
+use keypeek_presentation::{add_phosphor_to_fonts, OverlayHost};
 use keypeek_protocol::ui_wake::UiWake;
 
 pub mod overlay_app;
+pub mod settings_store;
+
 pub use overlay_app::{clear_color, OverlayApp, WebOverlayApp};
+pub use settings_store::LocalStorageSettingsStore;
 
 struct WebHost;
 
@@ -36,7 +39,7 @@ impl WebApp {
 
         let ctx = cc.egui_ctx.clone();
         let ui_wake = UiWake::new(Arc::new(move || ctx.request_repaint()));
-        let settings_store = Arc::new(MemorySettingsStore::default());
+        let settings_store = Arc::new(LocalStorageSettingsStore::default());
         let app = WebOverlayApp::new(ui_wake, settings_store);
 
         Self { app }

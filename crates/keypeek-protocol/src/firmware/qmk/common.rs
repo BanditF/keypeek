@@ -2,9 +2,13 @@ use super::codec as qmk_codec;
 #[cfg(feature = "hidapi")]
 use crate::protocols::pump_hid_reader;
 use crate::protocols::ActionFilter;
+#[cfg(target_arch = "wasm32")]
+use crate::protocols::DeviceEvent;
 #[cfg(any(feature = "hidapi", test))]
 use crate::protocols::RawHidTransport;
-use crate::protocols::{DeviceError, DeviceEvent, KeyboardProtocol, StopSignal, WriteSupport};
+use crate::protocols::{
+    DeviceError, EventSubscription, KeyboardProtocol, StopSignal, WriteSupport,
+};
 use keypeek_core::{KeySpec, KeyboardDefinition, KeymapSnapshot, LayerInfo};
 #[cfg(feature = "hidapi")]
 use qmk_via_api::api::KeyboardApi;
@@ -70,7 +74,7 @@ impl SubscriptionSender for RawHidSubscription {
 
 #[cfg(feature = "hidapi")]
 pub struct QmkSubscription {
-    pub events: mpsc::Receiver<DeviceEvent>,
+    pub events: EventSubscription,
     pub keepalive: Option<mpsc::Sender<()>>,
 }
 
@@ -101,6 +105,7 @@ pub fn qmk_subscribe_events(
 
     // 2. Spawn event reader thread using pump_hid_reader
     let (event_tx, event_rx) = mpsc::channel();
+    let reader_stop = stop_signal.clone();
     thread::spawn(move || {
         pump_hid_reader(
             || {
@@ -112,12 +117,12 @@ pub fn qmk_subscribe_events(
             },
             event_tx,
             "QMK device disconnected",
-            stop_signal,
+            reader_stop,
         );
     });
 
     Ok(QmkSubscription {
-        events: event_rx,
+        events: EventSubscription::new(event_rx, stop_signal),
         keepalive,
     })
 }
@@ -214,7 +219,7 @@ pub struct QmkProtocol {
     definition: KeyboardDefinition,
     snapshot: Mutex<KeymapSnapshot>,
     features: QmkFeatures,
-    event_rx: Mutex<Option<mpsc::Receiver<DeviceEvent>>>,
+    event_rx: Mutex<Option<EventSubscription>>,
     _keepalive: Option<mpsc::Sender<()>>,
     stop_signal: StopSignal,
 }
@@ -269,14 +274,16 @@ impl QmkProtocol {
         event_rx: mpsc::Receiver<DeviceEvent>,
         alive: Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
+        let stop_signal = StopSignal::new();
+        let sub = EventSubscription::new(event_rx, stop_signal.clone());
         Self {
             backend: Box::new(WebQmkBackend::new(transport, alive)),
             definition,
             snapshot: Mutex::new(snapshot),
             features,
-            event_rx: Mutex::new(Some(event_rx)),
+            event_rx: Mutex::new(Some(sub)),
             _keepalive: None,
-            stop_signal: StopSignal::new(),
+            stop_signal,
         }
     }
 }
@@ -294,7 +301,7 @@ impl KeyboardProtocol for QmkProtocol {
         Ok(self.snapshot.lock().unwrap().clone())
     }
 
-    fn subscribe_events(&mut self) -> Result<mpsc::Receiver<DeviceEvent>, DeviceError> {
+    fn subscribe_events(&mut self) -> Result<EventSubscription, DeviceError> {
         self.event_rx
             .lock()
             .unwrap()

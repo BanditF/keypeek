@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use crate::protocols::EventSubscription;
 use crate::protocols::{ActionFilter, DeviceEvent, KeyboardProtocol, WriteSupport};
 use crate::ui_wake::UiWake;
 use keypeek_core::{KeyPresenter, KeySpec, KeyboardDomain};
@@ -39,7 +41,7 @@ pub struct KeyboardSession {
     action_filter: Option<ActionFilter>,
     protocol: Arc<Mutex<Box<dyn KeyboardProtocol>>>,
     #[cfg(target_arch = "wasm32")]
-    event_rx: Mutex<mpsc::Receiver<DeviceEvent>>,
+    event_rx: Mutex<EventSubscription>,
     #[cfg(target_arch = "wasm32")]
     domain: Arc<KeyboardDomain>,
     #[cfg(target_arch = "wasm32")]

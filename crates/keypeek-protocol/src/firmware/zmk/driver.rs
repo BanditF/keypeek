@@ -3,10 +3,12 @@ use super::codec as zmk_codec;
 use super::rpc::{self as zmk_rpc, ZmkStudioSession, ZmkTransport};
 #[cfg(feature = "desktop")]
 use crate::protocols::pump_hid_reader;
+#[cfg(target_arch = "wasm32")]
+use crate::protocols::DeviceEvent;
 #[cfg(test)]
 use crate::protocols::RawHidTransport;
 use crate::protocols::{
-    DeviceError, DeviceEvent, KeyboardProtocol, Reopener, StopSignal, WriteSupport,
+    DeviceError, EventSubscription, KeyboardProtocol, Reopener, StopSignal, WriteSupport,
 };
 use keypeek_core::{KeySpec, KeyboardDefinition, KeymapSnapshot, LayerInfo};
 #[cfg(feature = "desktop")]
@@ -196,7 +198,7 @@ impl ZmkBackend for WebZmkBackend {
 }
 
 pub struct ZmkProtocol {
-    event_rx: Mutex<Option<mpsc::Receiver<DeviceEvent>>>,
+    event_rx: Mutex<Option<EventSubscription>>,
     layout: Arc<ZmkLayout>,
     backend: Box<dyn ZmkBackend>,
     reopener: Option<Arc<dyn Reopener>>,
@@ -266,8 +268,9 @@ impl ZmkProtocol {
             transport,
         }) as Arc<dyn Reopener>);
 
+        let sub = EventSubscription::new(event_rx, stop_signal.clone());
         Ok(Self {
-            event_rx: Mutex::new(Some(event_rx)),
+            event_rx: Mutex::new(Some(sub)),
             layout,
             backend,
             reopener,
@@ -299,7 +302,7 @@ impl ZmkProtocol {
                     reader_stop,
                 );
             });
-            event_rx
+            EventSubscription::new(event_rx, stop_signal.clone())
         });
         Self {
             event_rx: Mutex::new(event_rx),
@@ -316,12 +319,14 @@ impl ZmkProtocol {
         backend: Box<dyn ZmkBackend>,
         event_rx: mpsc::Receiver<DeviceEvent>,
     ) -> Self {
+        let stop_signal = StopSignal::new();
+        let sub = EventSubscription::new(event_rx, stop_signal.clone());
         Self {
-            event_rx: Mutex::new(Some(event_rx)),
+            event_rx: Mutex::new(Some(sub)),
             layout,
             backend,
             reopener: None,
-            stop_signal: StopSignal::new(),
+            stop_signal,
         }
     }
 }
@@ -361,7 +366,7 @@ impl KeyboardProtocol for ZmkProtocol {
         Ok(self.layout.snapshot.lock().unwrap().clone())
     }
 
-    fn subscribe_events(&mut self) -> Result<mpsc::Receiver<DeviceEvent>, DeviceError> {
+    fn subscribe_events(&mut self) -> Result<EventSubscription, DeviceError> {
         self.event_rx
             .lock()
             .unwrap()

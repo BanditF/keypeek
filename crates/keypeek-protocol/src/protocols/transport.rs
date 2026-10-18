@@ -58,7 +58,7 @@ impl RawHidTransport for MockHidTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocols::{pump_hid_reader, DeviceEvent, StopSignal};
+    use crate::protocols::{pump_hid_reader, DeviceEvent, EventSubscription, StopSignal};
     use std::sync::mpsc;
     use std::thread;
 
@@ -155,5 +155,48 @@ mod tests {
 
         // Channel should close without emitting any Disconnected event
         assert!(rx.recv().is_err());
+    }
+
+    #[test]
+    fn test_pump_reader_exits_when_subscription_dropped_on_inactive_device() {
+        let (tx, rx) = mpsc::channel();
+        let stop_signal = StopSignal::new();
+        let subscription = EventSubscription::new(rx, stop_signal.clone());
+
+        let handle = thread::spawn(move || {
+            // Inactive device that returns timeout Ok(None)
+            pump_hid_reader(|| Ok(None), tx, "Disconnected", stop_signal);
+        });
+
+        // Drop the RAII subscription guard without manually stopping stop_signal
+        drop(subscription);
+
+        // The reader thread must detect the stop signal triggered on drop and exit cleanly
+        let join_result = handle.join();
+        assert!(join_result.is_ok());
+    }
+
+    #[test]
+    fn test_pump_reader_exits_when_subscription_dropped_with_unmatched_packets() {
+        let (tx, rx) = mpsc::channel();
+        let stop_signal = StopSignal::new();
+        let subscription = EventSubscription::new(rx, stop_signal.clone());
+
+        let handle = thread::spawn(move || {
+            // Device returns raw packets that don't match KeyPeek telemetry
+            pump_hid_reader(
+                || Ok(Some(vec![0x00, 0x12, 0x34])),
+                tx,
+                "Disconnected",
+                stop_signal,
+            );
+        });
+
+        // Drop the RAII subscription guard without manually stopping stop_signal
+        drop(subscription);
+
+        // The reader thread must detect the stop signal triggered on drop and exit cleanly
+        let join_result = handle.join();
+        assert!(join_result.is_ok());
     }
 }

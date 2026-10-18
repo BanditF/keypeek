@@ -6,7 +6,9 @@ use std::sync::Arc;
 use crate::application::Keyboard;
 use crate::firmware::qmk::QmkEditorProfile;
 use crate::key_presenter::StandardKeyPresenter;
-use crate::protocols::{ConnectionSpec, DeviceError, DeviceEvent, KeyboardProtocol, WriteSupport};
+use crate::protocols::{
+    ConnectionSpec, DeviceError, EventSubscription, KeyboardProtocol, StopSignal, WriteSupport,
+};
 use crate::ui_wake::UiWake;
 use keypeek_core::{
     HidKey, Key, KeyMatrix, KeySpec, KeyboardDefinition, KeyboardDomain, KeyboardLayout,
@@ -54,9 +56,9 @@ impl KeyboardProtocol for TestProtocol {
         Ok(self.snapshot.clone())
     }
 
-    fn subscribe_events(&mut self) -> Result<mpsc::Receiver<DeviceEvent>, DeviceError> {
+    fn subscribe_events(&mut self) -> Result<EventSubscription, DeviceError> {
         let (_tx, rx) = mpsc::channel();
-        Ok(rx)
+        Ok(EventSubscription::new(rx, StopSignal::new()))
     }
 
     fn write_support(&self) -> WriteSupport {

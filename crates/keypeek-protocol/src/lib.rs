@@ -32,8 +32,8 @@ pub use firmware::{
     all_bundles, bundle_for_spec, connect_protocol, default_scanners, FirmwareBundle,
 };
 pub use protocols::{
-    ActionFilter, ConnectionSpec, DeviceError, DeviceEvent, KeyboardProtocol, RawHidTransport,
-    Reopener, WriteSupport,
+    ActionFilter, ConnectionSpec, DeviceError, DeviceEvent, EventSubscription, KeyboardProtocol,
+    RawHidTransport, Reopener, WriteSupport,
 };
 
 #[cfg(feature = "desktop")]

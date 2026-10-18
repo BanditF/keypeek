@@ -150,6 +150,40 @@ impl From<Arc<AtomicBool>> for StopSignal {
     }
 }
 
+/// An active subscription to keyboard events with RAII cancellation.
+///
+/// When dropped, `EventSubscription` signals the associated [`StopSignal`]
+/// to immediately terminate background hardware reader loops, avoiding
+/// thread leaks on inactive or silent devices.
+pub struct EventSubscription {
+    rx: mpsc::Receiver<DeviceEvent>,
+    stop_signal: StopSignal,
+}
+
+impl EventSubscription {
+    pub fn new(rx: mpsc::Receiver<DeviceEvent>, stop_signal: StopSignal) -> Self {
+        Self { rx, stop_signal }
+    }
+
+    pub fn stop_signal(&self) -> &StopSignal {
+        &self.stop_signal
+    }
+}
+
+impl std::ops::Deref for EventSubscription {
+    type Target = mpsc::Receiver<DeviceEvent>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rx
+    }
+}
+
+impl Drop for EventSubscription {
+    fn drop(&mut self) {
+        self.stop_signal.stop();
+    }
+}
+
 /// Pumps raw HID responses through `decode_raw_hid_packet` and sends resulting `DeviceEvent`s.
 /// Retries on transient errors and emits `DeviceEvent::Disconnected` after consecutive failures.
 /// Stops cleanly when `stop_signal` is stopped.
@@ -163,10 +197,12 @@ pub fn pump_hid_reader<F>(
 {
     const MAX_CONSECUTIVE_ERRORS: u32 = 5;
     let mut consecutive_errors: u32 = 0;
+
     loop {
         if stop_signal.is_stopped() {
             break;
         }
+
         match read() {
             Ok(Some(bytes)) => {
                 consecutive_errors = 0;
@@ -180,7 +216,9 @@ pub fn pump_hid_reader<F>(
                 }
             }
             Ok(None) => {
-                // Timeout / no data, continue
+                // Timeout / no data. Back off briefly if read was non-blocking.
+                #[cfg(not(target_arch = "wasm32"))]
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
             Err(_) => {
                 if stop_signal.is_stopped() {
@@ -191,6 +229,7 @@ pub fn pump_hid_reader<F>(
                     let _ = event_tx.send(DeviceEvent::Disconnected(disconnect_msg.to_string()));
                     break;
                 }
+                #[cfg(not(target_arch = "wasm32"))]
                 std::thread::sleep(std::time::Duration::from_millis(200));
             }
         }
@@ -219,7 +258,7 @@ pub trait KeyboardProtocol: Send {
     fn read_keymap(&self) -> Result<KeymapSnapshot, DeviceError>;
 
     /// Subscribes to layer-state and key-press events from the device.
-    fn subscribe_events(&mut self) -> Result<mpsc::Receiver<DeviceEvent>, DeviceError>;
+    fn subscribe_events(&mut self) -> Result<EventSubscription, DeviceError>;
 
     /// Signals the protocol to stop background reading and release hardware handles.
     fn disconnect(&mut self) {}
